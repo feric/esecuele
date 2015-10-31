@@ -129,6 +129,7 @@ class Injection:
 	Time = 1.5
 	dormir = "DOORMIR"
 	verbosity = False
+	error = ""
 
 
 	def __init__(self):
@@ -136,6 +137,10 @@ class Injection:
 
 	def setVerbosity(self,simon):
 		self.verbosity = simon
+
+	def setError(self,errorPhrase):
+		self.error = errorPhrase
+		self
 
 	def searchDbname(self,Buscar):
 		self.dnames = Buscar
@@ -223,7 +228,7 @@ class Injection:
 	def PostInjection(self):
 		#First try MySQL queries
 		if self.Which.__len__()<1:
-			self.bases = ('Generic','MySQL','Postgres','Mssql','Oracle')
+			self.bases = ('MySQL','Postgres','Mssql')#,'Oracle')
 		else:
 			self.bases = self.Which.split()
 		Ftime = True
@@ -245,9 +250,15 @@ class Injection:
 						# Imprimir Respuesta
 						if self.Based == "time":
 							#cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (Attempt.elapsed.total_seconds() + float(self.Time) )
-							cumple = (Attempt.content == self.GoodRequest.content) and (self.GoodRequest.elapsed.total_seconds() < (self.GoodRequest.elapsed.total_seconds() + float(self.Time) ))
+							if len(self.error) == 0:
+								cumple = (Attempt.content == self.GoodRequest.content) and (self.GoodRequest.elapsed.total_seconds() < (self.GoodRequest.elapsed.total_seconds() + float(self.Time) ))
+							else:
+								cumple = (self.error in self.GoodRequest.content) and (self.GoodRequest.elapsed.total_seconds() < (self.GoodRequest.elapsed.total_seconds() + float(self.Time) ))
 						else:
-							cumple = Attempt.content == self.GoodRequest.content
+							if len(self.error) > 0:
+								cumple = self.error in self.GoodRequest.content
+							else:
+								cumple = Attempt.content == self.GoodRequest.content
 						if cumple:
 							#After do a post request, prefix, payload and suffix will be storage in "Flags" variable
 							self.Flags[dbms]['Prefijo'].append(pref)
@@ -336,32 +347,39 @@ class Injection:
 			except:
 				print "not vulnerable"
 		else:
-			print "-"*140
-			print ":"*60,"Client Request",":"*60l
-			print "-"*140
-			#print "\033[1;35m{0} {1} HTTP/1.1\033[0m \n".format(self.GoodRequest.request.method,self.GoodRequest.request.path_url)
-			# Cambiar objeto por self.GoodRequest
-			print "\033[1;35m{0} {1} HTTP/1.1\033[0m \n".format(objeto.request.method,objeto.request.path_url)
-			for h in objeto.request.headers: print "\033[1;35m"+h,":",objeto.request.headers.get(h)+"\033[0m"
-			print "\n\033[1;36m",lll,"\033[0m\n\033[0m"
-			print "-"*140
-			print ":"*60,"Server Response",":"*60
-			print "-"*140
-			for i in objeto.headers: print "\033[1;35m"+i,":",objeto.headers.get(i)+"\033[0m"
-			####
-			## This section will write successfull data to file
-			if vulnerable:# and Previo:
-				if not Previo:
-					try:
-						sss = open(self.fullPath+"/"+self.succesfullQuery,"w")
-																			#################################################
-																			# 	Format to use when write in a file as csv 	#
-																			#   url, method, dbms, prefix, sufix, request   #
-																			#################################################
-						sss.write("{0}:::{1}:::{2}:::{3}:::{4}:::{5}".format(self.GoodRequest.url.__str__(), self.GoodRequest.request.method, self.Which, self.prefixSuccess,self.suffixSuccess,lll))
-						sss.close()
-					except:
-						print "Failed to write data in file"
+			if vulnerable:
+				print "-"*140
+				print ":"*60,"Client Request",":"*60l
+				print "-"*140
+				#print "\033[1;35m{0} {1} HTTP/1.1\033[0m \n".format(self.GoodRequest.request.method,self.GoodRequest.request.path_url)
+				# Cambiar objeto por self.GoodRequest
+				print "\033[1;35m{0} {1} HTTP/1.1\033[0m \n".format(objeto.request.method,objeto.request.path_url)
+				for h in objeto.request.headers: print "\033[1;35m"+h,":",objeto.request.headers.get(h)+"\033[0m"
+				print "\n\033[1;36m",lll,"\033[0m\n\033[0m"
+				print "-"*140
+				print ":"*60,"Server Response",":"*60
+				print "-"*140
+				try:
+					for i in objeto.headers: print "\033[1;35m"+i,":",objeto.headers.get(i)+"\033[0m"
+				except:
+					pass
+				####
+				## This section will write successfull data to file
+				if vulnerable:# and Previo:
+					if not Previo:
+						try:
+							sss = open(self.fullPath+"/"+self.succesfullQuery,"w")
+																				#################################################
+																				# 	Format to use when write in a file as csv 	#
+																				#   url, method, dbms, prefix, sufix, request   #
+																				#################################################
+							sss.write("{0}:::{1}:::{2}:::{3}:::{4}:::{5}".format(self.GoodRequest.url.__str__(), self.GoodRequest.request.method, self.Which, self.prefixSuccess,self.suffixSuccess,lll))
+							sss.close()
+						except:
+							print "Failed to write data in file"
+				elif not vulnerable:
+					print "Bye"
+					exit(1)
 			elif not vulnerable:
 				print "Bye"
 				exit(1)
@@ -1042,7 +1060,7 @@ class Injection:
 
 def Opciones(argv):
 	try:
-		opciones, argumentos = getopt(argv[1:],"ho:v",["v","request=","anduin=","cookies=","user-agent=","method=","random-agent","data=","proxy=","columns=","tables=","server=",'dbname=','db','based=',"time="])
+		opciones, argumentos = getopt(argv[1:],"ho:v",["v","request=","anduin=","cookies=","user-agent=","method=","random-agent","data=","proxy=","columns=","tables=","server=",'dbname=','db','based=',"time=","error="])
 	except GetoptError:
 		print """### Ayuda ###\n{0} --request=<http://www.example.gob.mx> --user-agent=<example/2.1>""".format(argv[0])
 		exit(2)
@@ -1112,6 +1130,8 @@ def Opciones(argv):
 		elif opt == '--time':
 			inject.setTime(vals)
 		#Option not valid
+		elif opt == '--error':
+			inject.setError(vals)
 		elif opt == '--method':
 			if vals in ('get','post'):
 				inject.setMethod(vals)
