@@ -1,5 +1,5 @@
 # Cegatron
-<b>python Cegatrong.py --request "http://example.net?id=123 --based error"</b>
+<b>python Cegatrong.py --request "http://example.net?id=123" --based error</b>
 Options:
 
 	-h, --help					- Show help message
