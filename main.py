@@ -25,36 +25,63 @@ import timebased
 class Injection:
 	Comodin="_sqli_"
 	Ayuda = """
+  ______________________________
+ / 	!!! Cegatron !!! 	\ 
+|     Powered by Becarios Team 	|
+|     This is, our Menu help 	|
+ --------------------------------
+	 \                             .       .
+	  \                           / `.   .' " 
+	   \                  .---.  <    > <    >  .---.
+	    \                 |    \  \ - ~ ~ - /  /    |
+	          _____          ..-~             ~-..-~
+	         |     |   \~~~\.'                    `./~~~/
+	        ---------   \__/                        \__/
+	       .'  O    \     /               /       \  " 
+	      (_____,    `._.'               |         )  \/~~~/
+	       `----.          /       )     |        /    \__/
+	             `-.      |       /      |       /      `. ,~~|
+	                 ~-.__|      /_ - ~ ^|      /- _      `..-'   
+	                      |     /        |     /     ~-.     `-. _  _  _
+	                      |_____|        |_____|         ~ - . _ _ _ _ _>
+
 Options:
 
-	-h, --help							- Show help message
-	-v 								- Verbose mode (Show Request, payload & Response Headers)
+	-h, --help					- Show help message
+	-v 						- Verbose mode (Show Request, payload & Response Headers)
 
 Request:
 
-	--request="http[s]://www.example.gob.mx?id=5"			- Url target to scan
-	--method=[get|post]						- Method Get or Post to launch scan (Get by default)
-	--user-agent="Googlebot/2.1"					- User Agent string to use
-	--random-agent							- Random User Agent to use (by default)
-	--data="param1=value1{sust}&param2=value2"			- Data used for post method (Use '{sust}' where you want insert payload [Mandatory use it!!!])
-	--cookies="PHPSESSID=ue2;date=20151003"				- Cookie data to use a session
-	--proxy="127.0.0.1:8080"					- Proxy ip and port to use at every query [http proxy by default]
+	--request="http[s]://www.example.gob.mx?id=5"	- Url target to scan
+	--method=[get|post]				- Method Get or Post to launch scan (Get by default)
+	--user-agent="Googlebot/2.1"			- User Agent string to use
+	--random-agent					- Random User Agent to use (by default)
+	--data="param1=value1{sust}&param2=value2"	- Data used for post method (Set {sust} to use payloads *Mandatory)
+	--cookies="PHPSESSID=ue2;date=20151003"		- Cookie data to use a session
+	--proxy="127.0.0.1:8080"			- Proxy ip and port to use at every query [http proxy by default]
 
 Injection:
 
-	--server=(MySQL,Postgres,Mssql)					- Database querys to use (by default use all queries)
-	--based=[error|time]						- Force usage of given HTTP method (error based by default)
-	--success="Success Phrase"					- String to compare when a response is correct
-	--error="Error Phrase"						- String to compare when a response is incorrect
-	--time=[1.5]							- Time to use in Time Based Attempt
+	--server=[MySQL,Postgres,Mssql]			- Database querys to use (by default use all queries)
+	--based=[error|time]				- Force usage of given HTTP method (error based by default)
+	--success="Success Phrase"			- String to compare when a response is correct
+	--error="Error Phrase"				- String to compare when a response is incorrect
+	--time=[1.5]					- Time to use in Time Based Attempt
 
 Enumeration:
 
-	--db 								- Retrieve Database names
-	--dbname=db1,db2,db3						- Retrieve Table names of Databases specified
-	--tables=table1,table2,table3					- Retrieve Column names of tables specified
-	--columns=column1,column2					- Retrieve records of columns specified
-	""".format(sust=Comodin)
+	--db 						- Retrieve Database names
+	--dbname=db1,db2,db3				- Retrieve Table names of Databases specified
+	--tables=table1,table2,table3			- Retrieve Column names of tables specified
+	--columns=column1,column2			- Retrieve records of columns specified
+
+Examples
+	Get
+	{progname} --request="http://www.example.gob.mx?id=5_sqli_" --method=get --based=error
+
+	Post
+	{progname} --request="http://www.example.gob.mx?PURP=PXNE660720HMCXTN06" --method=[get|post] --based=[error|time] --data="id=70_sqli_&submit=submit"
+	""".format(sust=Comodin,progname=argv[0])
 
 	Agentes={
 		'Chrome':'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36',
@@ -664,7 +691,6 @@ Enumeration:
 		 	lim = 150
 		 	if indiceY >= lim and (var == "Y" or var == "y") and indiceY%150 == 0:
 		 		print "Intentos máximos de inyeción agotados"
-
 		 		exit(2)
 		return version
 		
@@ -744,7 +770,7 @@ Enumeration:
 							tabla += char
 							indiceY = indiceY +1
 					bases[where].append(tabla)
-					obj.showCharacter(tabla)
+					#obj.showCharacter(tabla)
 					print ""
 					tabla = ""
 					indiceX = indiceX + 1
@@ -818,11 +844,13 @@ Enumeration:
 		for where in bases.keys():
 			tablaCol=['']
 			if where != "information_schema" and where != "mysql" and where != "performance_schema" and where != "msdb" and where != "master"  and where != '':
-				if obj.tnames and obj.cnames and not obj.rnames:  
-					print "Base de datos: "+where
+				#if obj.tnames and obj.cnames and not obj.rnames:  
+					#print "Base de datos: "+where
 				for table in bases[where]:
 					if obj.tnames and obj.cnames and not obj.rnames:  
-						print "\t\t"+table
+						#print "\t\t"+table
+						obj.showCharacter(table)
+						print "\n"
 					bandera = 0
 					indiceY	= 1
 					indiceX = 0
@@ -855,12 +883,11 @@ Enumeration:
 						if banderaCol == 0:
 							columna1 = columna
 							banderaCol = 1
-
-						if obj.tnames and obj.cnames and not obj.rnames:  
-							print "\t\t\t"+columna
+						if obj.tnames and obj.cnames and not obj.rnames:
+							#print "\t\t\t"+columna
+							print ""
 							f.write("Base de datos: "+where+" Tabla: "+ table + "Columna\n")
 						if where != '' and table != '' and columna != '' and ((obj.tnames and obj.cnames and obj.rnames) or (not obj.tnames and not obj.cnames and not obj.rnames)) :
-
 							obj.getInfo(obj,manejador,tipo,ok,126,32,0,0,where,obj.based,where,current,table,columna,f,columna1)
 						columna = ""
 						indiceX = indiceX + 1
@@ -2056,6 +2083,30 @@ Enumeration:
 		return letras
 
 	def Begin(self):
+		print """
+  ______________________________________________
+ / 		!!! Cegatron !!! 		\ 
+| 	    Powered by Becarios Team 	  	|
+|    Do your mommy know what are you doing?     |
+| 	    Don't play with this 		| 
+|	    or you can cut you a finger		|
+ \______________________________________________/
+  ----------------------------------------------
+	 \                             .       .
+	  \                           / `.   .' " 
+	   \                  .---.  <    > <    >  .---.
+	    \                 |    \  \ - ~ ~ - /  /    |
+	          _____          ..-~             ~-..-~
+	         |     |   \~~~\.'                    `./~~~/
+	        ---------   \__/                        \__/
+	       .'  O    \     /               /       \  " 
+	      (_____,    `._.'               |         }  \/~~~/
+	       `----.          /       }     |        /    \__/
+	             `-.      |       /      |       /      `. ,~~|
+	                 ~-.__|      /_ - ~ ^|      /- _      `..-'   
+	                      |     /        |     /     ~-.     `-. _  _  _
+	                      |_____|        |_____|         ~ - . _ _ _ _ _>
+		"""
 		try:
 			#print self.based
 			if self.based == "time":
@@ -2180,7 +2231,31 @@ Enumeration:
 			self.fullPath = self.reportDir+""+self.hname+"/"+self.aData
 			print self.fullPath
 		except:
-			print """{0} -h for help""".format(argv[0])
+			#print """{0} -h for help""".format(argv[0])
+			print """
+  ______________________________________________
+ / 		!!! Cegatron !!! 		\ 
+| 	    Powered by Becarios Team 	  	|
+|   	   We can't create a backdoor,  	|
+|   could you check your folder permissions ;)  |
+|   	   Use -h option to get help     	|
+ \______________________________________________/
+  ----------------------------------------------
+	 \                             .       .
+	  \                           / `.   .' " 
+	   \                  .---.  <    > <    >  .---.
+	    \                 |    \  \ - ~ ~ - /  /    |
+	          _____          ..-~             ~-..-~
+	         |     |   \~~~\.'                    `./~~~/
+	        ---------   \__/                        \__/
+	       .'  O    \     /               /       \  " 
+	      (_____,    `._.'               |         }  \/~~~/
+	       `----.          /       }     |        /    \__/
+	             `-.      |       /      |       /      `. ,~~|
+	                 ~-.__|      /_ - ~ ^|      /- _      `..-'   
+	                      |     /        |     /     ~-.     `-. _  _  _
+	                      |_____|        |_____|         ~ - . _ _ _ _ _>
+		"""
 			exit(1)
 		#########################################################################
 		##  First, we check if exists files previously generated by the tools  ##
@@ -2212,7 +2287,28 @@ def Opciones(argv):
 	try:
 		opciones, argumentos = getopt(argv[1:],"ho:v",["help","v","request=","success=","cookies=","user-agent=","method=","random-agent","data=","proxy=","columns=","tables=","server=",'dbname=','db','based=',"time=","error="])
 	except GetoptError:
-		print """{0} -h for help""".format(argv[0])
+#		print """{0} -h for help""".format(argv[0])
+		print """
+  ______________________________________________
+ / 		!!! Cegatron !!! 		\ 
+| 	    Powered by Becarios Team 	  	|
+|   	   Use -h option to get help ;)  	|
+  ----------------------------------------------
+	 \                             .       .
+	  \                           / `.   .' " 
+	   \                  .---.  <    > <    >  .---.
+	    \                 |    \  \ - ~ ~ - /  /    |
+	          _____          ..-~             ~-..-~
+	         |     |   \~~~\.'                    `./~~~/
+	        ---------   \__/                        \__/
+	       .'  O    \     /               /       \  " 
+	      (_____,    `._.'               |         }  \/~~~/
+	       `----.          /       }     |        /    \__/
+	             `-.      |       /      |       /      `. ,~~|
+	                 ~-.__|      /_ - ~ ^|      /- _      `..-'   
+	                      |     /        |     /     ~-.     `-. _  _  _
+	                      |_____|        |_____|         ~ - . _ _ _ _ _>
+		"""
 		exit(2)
 	for opt, vals in opciones:
 		#Ayuda
@@ -2292,6 +2388,27 @@ def Opciones(argv):
 				exit(1)
 		else:
 			print '<{0} -h for help'.format(argv[0])
+			print """
+  ______________________________________________
+ / 		!!! Cegatron !!! 		\ 
+| 	    Powered by Becarios Team 	  	|
+|   	To get help type -h option ;)  	|
+  ----------------------------------------------
+	 \                             .       .
+	  \                           / `.   .' " 
+	   \                  .---.  <    > <    >  .---.
+	    \                 |    \  \ - ~ ~ - /  /    |
+	          _____          ..-~             ~-..-~
+	         |     |   \~~~\.'                    `./~~~/
+	        ---------   \__/                        \__/
+	       .'  O    \     /               /       \  " 
+	      (_____,    `._.'               |         }  \/~~~/
+	       `----.          /       }     |        /    \__/
+	             `-.      |       /      |       /      `. ,~~|
+	                 ~-.__|      /_ - ~ ^|      /- _      `..-'   
+	                      |     /        |     /     ~-.     `-. _  _  _
+	                      |_____|        |_____|         ~ - . _ _ _ _ _>
+		"""
 			exit(1)
 	else:
 		main()
@@ -2315,7 +2432,8 @@ def main():
 
 if __name__ == "__main__":
 	try:
-		print "\t"*2,"%"*28,"\n","\t"*2,"%"*5,"!!! Cegatron !!!","%"*5,"\n","\t"*2,"%"*5," Becarios Team  ","%"*5,"\n","\t"*2,"%"*28
+		#print "\t"*2,"%"*28,"\n","\t"*2,"%"*5,"!!! Cegatron !!!","%"*5,"\n","\t"*2,"%"*5," Becarios Team  ","%"*5,"\n","\t"*2,"%"*28
+
 		if isdir(getenv("HOME")+"/sql/"):
 			pass
 		else:
